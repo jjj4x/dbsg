@@ -1,2 +1,2 @@
 # dbsg
-[Oracle] DataBase Stubs Generator
+DB Stubs Generator

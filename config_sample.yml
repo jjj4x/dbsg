@@ -1,0 +1,88 @@
+---
+path: stubs
+
+oracle_home: /opt/oracle/instantclient_18_3
+
+nls_lang: null
+
+databases:
+  - name: db_name
+    pool:
+      user: user
+      password: pass
+      threaded: true
+      homogeneous: true
+      min: 8
+      max: 8
+      encoding: UTF-8
+      dsn:
+        host: 127.0.0.1
+        port: 1521
+        sid: null
+        service_name: some
+    schemes:
+      - name: billing
+        no_package_name: billing_no_pkg
+        exclude_packages:
+          - nasty_bills
+        exclude_routines:
+          - espesially_nasty_routine
+          - horrible_pkg.oh_no
+
+      - name: tickets
+        exclude_routines: null
+        include_routines:
+          - only_this_one
+          - and_that_one
+
+      - name: "goodies"  # include everything for the scheme
+
+logging:
+  version: 1
+  disable_existing_loggers: false
+  formatters:
+    main:
+      # "DBSG", or any other word before [PID] will become $programname in syslog
+      format: >-
+        DBSG[%(process)s]
+        [%(levelname)s]
+        [thread_id=%(thread)d]
+        [version=%(app_version)s]
+        [%(name)s]
+        -> %(message)s
+      datefmt: "%Y-%m-%d %H:%M:%S"
+      class: logging.Formatter
+  filters:
+    app_version:
+      "()": "dbsg.config.APPVersionLoggingFilter"
+  handlers:
+    console:
+      class: logging.StreamHandler
+      formatter: main
+      stream: ext://sys.stdout
+      filters:
+        - app_version
+    # TODO: maybe redundant (12 factor app)
+    syslog:
+      class: logging.handlers.SysLogHandler
+      facility: local7
+      address: /dev/log
+      formatter: main
+      filters:
+        - app_version
+  root:  # The Root Logger
+    handlers:
+      - console
+      - syslog
+    level: DEBUG
+  loggers:  # "propagate: true" means "use Root Logger's handlers"
+    marshmallow:
+      level: WARNING
+      propagate: true
+    pyyaml:
+      level: WARNING
+      propagate: true
+    cx_Oracle:
+      level: DEBUG
+      propagate: true
+...

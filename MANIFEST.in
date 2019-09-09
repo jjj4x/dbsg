@@ -1,0 +1,9 @@
+# NOTE:
+# It is considered good practice to include test files in the source
+# distribution, as well as the files used to run them. It allows packagers
+# and users to run the tests locally to ensure the package is complete and
+# working.
+
+include LICENCE.txt README.md CHANGELOG.md
+
+global-exclude *.py[co]

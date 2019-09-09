@@ -1,0 +1,19 @@
+## Backlog:
+- [ ] Code decomposition
+- [ ] Solution for abbreviations
+- [ ] Typed proc output
+- [ ] Typed func output
+- [ ] Typed output for cursors
+- [ ] Connection Pool handling (disconnection)
+- [ ] Acknowledge contributors
+- [ ] Complex (data_level > 1) IN
+- [ ] Complex OUT arguments
+- [ ] Complex IN/OUT arguments
+- [ ] Better CLI interface
+- [ ] Style Guide Linter
+- [ ] pylint
+- [ ] mypy
+- [ ] documentation
+- [ ] tests
+- [ ] CI
+- [ ] PyPI publishing
