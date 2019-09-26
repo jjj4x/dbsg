@@ -54,7 +54,7 @@ logging:
       class: logging.Formatter
   filters:
     app_version:
-      "()": "dbsg.config.APPVersionLoggingFilter"
+      "()": "dbsg.lib.configuration.APPVersionLoggingFilter"
   handlers:
     console:
       class: logging.StreamHandler
