@@ -108,6 +108,14 @@ class Routine:
             # In this context, last_argument is always a ComplexArgument
             self.last_argument.dispatch_argument(argument)
 
+    @property
+    def sorted_arguments(self) -> MutableSequence[Argument]:
+        return sorted(self.arguments, key=lambda a: a.defaulted)
+
+    @property
+    def has_ins(self):
+        return any(a for a in self.arguments if a.in_out != 'out')
+
 
 @dataclass
 class Package:

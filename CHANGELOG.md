@@ -1,3 +1,8 @@
+# 2019.3.0
+## Code Decomposition Completed:
+- An alpha version (a working draft)
+- Better CLI, dynamic plugins, better interface
+
 # 2019.2.0
 ## Code Decomposition:
 - An alpha version (a working draft)

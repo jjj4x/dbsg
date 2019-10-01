@@ -221,6 +221,7 @@ class Database:
 class Configuration:
     databases: MutableSequence[Database]
     logging: dict
+    plugins: MutableSequence[str]
     path: Path = field(default='stubs')
     oracle_home: Optional[str] = field(default=None)
     nls_lang: Optional[str] = field(default='American_America.AL32UTF8')
@@ -292,6 +293,7 @@ class DatabaseSchema(MarshmallowSchema):
 
 class ConfigSchema(MarshmallowSchema):
     path = String(required=False)
+    plugins = List(String(), required=True)
 
     oracle_home = String(required=False, allow_none=True)
     nls_lang = String(required=False, allow_none=True)
@@ -308,29 +310,41 @@ class ConfigSchema(MarshmallowSchema):
 # **************************Configuration Serializers**************************
 
 
+# ******************************Configuration CLI******************************
+CommandLineInterface = ArgumentParser()
+CommandLineInterface.add_argument(
+    '--config',
+    dest='path',
+    default=None,
+)
+CommandLineInterface.add_argument(
+    nargs='?',
+    dest='path',
+    default=None,
+)
+CommandLineInterface.add_argument(
+    '--plugins',
+    nargs='*',
+    dest='plugins',
+    default=['json'],
+)
+# ******************************Configuration CLI******************************
+
+
 # **************************Configuration Entry Point**************************
 class Setup:
     VALIDATOR = ConfigSchema()
+    CLI: ArgumentParser = CommandLineInterface
 
-    def __init__(self, path=None):
-        # Options from CLI
-        parser = ArgumentParser()
-        parser.add_argument(
-            '--config',
-            dest='path',
-            default=None,
-        )
-        parser.add_argument(
-            nargs='?',
-            dest='path',
-            default=None,
-        )
-        cli = parser.parse_args().__dict__  # CLI args take precedence
-        self.cli = cli or {}
+    def __init__(self):
+        cli = self.CLI.parse_args().__dict__ or {}
+        path = cli.pop('path', None)
 
-        # Options from file
-        path = path or cli.pop('path') or getenv('DBSG_CONF', 'dbsg_config.yml')
-        self.path = path
+        # CLI args take precedence over YAML config
+        self.cli = cli
+
+        # CLI path takes precedence over ENV path
+        self.path = path or getenv('DBSG_CONF', 'dbsg_config.yml')
 
     def merge_cli_with_file(self) -> MutableMapping:
         with open(self.path, 'r', encoding='utf8') as fh:
