@@ -153,3 +153,5 @@ src/urls/dev.py
 *config*.yml
 !config_sample.yml
 local_notes*
+*abbreviations*
+!default_abbreviations.txt

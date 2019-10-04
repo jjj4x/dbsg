@@ -5,6 +5,9 @@ oracle_home: /opt/oracle/instantclient_18_3
 
 nls_lang: null
 
+abbreviation_files:
+  - default_abbreviations.txt
+
 databases:
   - name: db_name
     pool:

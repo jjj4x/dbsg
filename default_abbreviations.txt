@@ -1,0 +1,31 @@
+# Default Abbreviations Dictionary
+
+# Some rules:
+# 1. Comments amd blanks in the file are ignored
+# 2. The words will be uppercased, like:
+#    - http_package -> HTTPPackage (for http abbreviation)
+#    - sql_generic_api -> SQLGenericAPI (for sql and api abbreviations)
+# 3. The boundaries are \b or _, so with "eset" abbreviation, eset_pkg
+#    will become ESETPkg, but preset_pkg will stay PresetPkg
+# 4. Abbreviations separated by "=" considered to have a concrete outcome, so
+#    wifi = Wifi will yield WiFiHelpers from wifi_helpers, and with
+#    helpdesk = HD you can transform helpdesk_routines into HDRoutines, and
+#    ex_data_base_utils = DB will yield DBPkg from ex_data_base_utils_pkg
+api
+html
+http
+sql
+xml
+auto_pp  = AutoPP  # promised payment
+fttb  # fiber to the building
+iptv_services
+ott  # over the top
+inac  # internet accounting
+tve
+mtopup
+eset
+uss
+usss
+wifi = WiFi
+drweb = DrWEB
+helpdesk = HelpDesk

@@ -4,8 +4,9 @@ from logging.config import dictConfig
 from logging import Filter, getLogger
 from os import getenv, environ
 from pathlib import Path
+from re import compile
 from sys import exit
-from typing import MutableMapping, MutableSequence, Optional, Union
+from typing import MutableMapping, MutableSequence, Optional, Union, Pattern
 
 from cx_Oracle import SessionPool, makedsn
 from marshmallow import Schema as MarshmallowSchema, post_load
@@ -222,6 +223,8 @@ class Configuration:
     databases: MutableSequence[Database]
     logging: dict
     plugins: MutableSequence[str]
+    abbreviations: Pattern[str]
+    outcomes: MutableMapping[str, str]
     path: Path = field(default='stubs')
     oracle_home: Optional[str] = field(default=None)
     nls_lang: Optional[str] = field(default='American_America.AL32UTF8')
@@ -294,6 +297,7 @@ class DatabaseSchema(MarshmallowSchema):
 class ConfigSchema(MarshmallowSchema):
     path = String(required=False)
     plugins = List(String(), required=True)
+    abbreviation_files = List(String(), required=False)
 
     oracle_home = String(required=False, allow_none=True)
     nls_lang = String(required=False, allow_none=True)
@@ -303,6 +307,28 @@ class ConfigSchema(MarshmallowSchema):
 
     @post_load
     def post_load(self, data):
+        outcomes = {}
+        words = []
+        for file in data.pop('abbreviation_files', []):
+            with open(file, 'r', encoding='utf8') as fd:
+                for word in fd:
+                    if not word or word.startswith('#'):
+                        continue
+
+                    if '#' in word:
+                        word, *_ = word.split('#')
+
+                    outcome = None
+                    if '=' in word:
+                        word, outcome = word.split('=')
+
+                    word = word.strip()
+                    words.append(word)
+                    if outcome is not None:
+                        outcomes[word] = outcome.strip()
+
+        data['abbreviations'] = compile(rf'(\b|_)({"|".join(words)})(\b|_)')
+        data['outcomes'] = outcomes
         data['databases'] = [Database(**db) for db in data['databases']]
         data['path'] = Path(data['path'])
         data['config'] = Configuration(**data)
@@ -327,6 +353,12 @@ CommandLineInterface.add_argument(
     nargs='*',
     dest='plugins',
     default=['json'],
+)
+CommandLineInterface.add_argument(
+    '--abbreviation-files',
+    nargs='*',
+    dest='abbreviation_files',
+    default=['default_abbreviations.txt'],
 )
 # ******************************Configuration CLI******************************
 

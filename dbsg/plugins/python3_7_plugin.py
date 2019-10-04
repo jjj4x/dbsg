@@ -1,8 +1,9 @@
 from keyword import iskeyword
 from logging import getLogger
-from re import compile, sub
-from typing import MutableSequence
+from re import compile
+from typing import MutableSequence, Match
 
+from dbsg.lib.configuration import Configuration
 from dbsg.lib.intermediate_representation import Argument, Routine, Package
 from dbsg.lib.plugin import PluginABC
 
@@ -10,6 +11,7 @@ LOG = getLogger(__name__)
 
 REGISTRY_NAME = 'python3.7'
 
+SNAKE_CASE = compile(r'^\w|_\w')
 CX_COMPLEX_TYPES = (
     'varray',
     'table',
@@ -43,12 +45,35 @@ PY_SIMPLE_TYPES = {
     'pl/sql boolean': 'bool',
     'binary_integer': 'int',
 }
-ABBR_DICT = compile(r'(api|http|sql|html)')
 WS = '    '  # python indent (whitespaces)
 LF = '\n'  # line feed (new line)
 
 
 class Plugin(PluginABC):
+    GENERIC_MODULE_TEMPLATE = '''\
+"""
+The package is auto-generated. Don't edit it by hand -- changes won't persist.
+"""
+import cx_Oracle
+
+
+class Stub:
+    def __init__(self, connection: cx_Oracle.Connection):
+        self.connection = connection
+
+    @property
+    def cursor(self) -> cx_Oracle.Cursor:
+        return self.connection.cursor()
+
+
+class DEFAULTED:
+    """Is defaulted"""
+
+
+class TBD:
+    """The argument is not supported, yet"""
+'''
+
     def __init__(self, configuration, introspection, ir, **kwargs):
         self.configuration = configuration
         self.introspection = introspection
@@ -62,9 +87,11 @@ class Plugin(PluginABC):
     def save(self, **kwargs):
         path = self.configuration.path.absolute()
         path.mkdir(parents=True, exist_ok=True)
+        (path / '__init__.py').touch(exist_ok=True)
 
-        # TODO: subs lib level
         # Top-Level: stubs python package and its helpers
+        with (path / 'generic.py').open('w', encoding='utf8') as fd:
+            fd.write(self.GENERIC_MODULE_TEMPLATE)
 
         for db in self.ir:
             # DB-Level: db python package -- a placeholder for schema packages
@@ -79,7 +106,7 @@ class Plugin(PluginABC):
 
                 for package in schema.packages:
                     # Package-Level: python module with its relevant content
-                    python_module = PyModule(package)
+                    python_module = PyModule(self.configuration, package)
 
                     for routine in package.routines:
                         python_module.add_method(routine)
@@ -102,33 +129,22 @@ The package is auto-generated. Don't edit it by hand -- changes won't persist.
 
 import cx_Oracle
 
+import {path}.generic as generic
+
 LOG = logging.getLogger(__name__)
 
 
-class Stub:
-    def __init__(self, connection: cx_Oracle.Connection):
-        self.connection = connection
-
-    @property
-    def cursor(self) -> cx_Oracle.Cursor:
-        return self.connection.cursor()
-
-
-class DEFAULTED:
-    """Is defaulted"""
-
-
-class TBD:
-    """The argument is not supported, yet"""
-
-
 # noinspection PyShadowingBuiltins,DuplicatedCode
-class {package_name}(Stub):
+class {package_name}(generic.Stub):
 {package_body}
 
 '''
 
-    def __init__(self, package: Package):
+    def __init__(self, configuration: Configuration, package: Package):
+        self.path = configuration.path
+        # Abbreviations RegEx is made dynamically on the Configuration stage
+        self.abbreviations = configuration.abbreviations
+        self.outcomes = configuration.outcomes
         self.package = package
 
         self.imports = {'logging'}
@@ -149,24 +165,24 @@ class {package_name}(Stub):
             )
 
         return self.TEMPLATE.format(
+            path=self.path,
             errors=errors,
             imports='\n'.join(f'import {m}' for m in sorted(self.imports)),
-            package_name=self.capwords(self.package.name),
+            package_name=self.abbreviated_capwords(self.package.name),
             package_body='\n'.join(str(func) for func in self.methods),
         )
 
+    def abbreviate(self, match: Match):
+        word = match.group(0)
+        return self.outcomes.get(word) or word.upper()
+
     @staticmethod
-    def capwords(snake_case: str):
-        # TODO: generic abbreviations handling
-        with_abbreviations = ABBR_DICT.sub(
-            lambda m: m.group(0).upper(),
-            snake_case
-        )
-        return sub(
-            r'^\w|_\w',
-            lambda m: m.group(0).replace('_', '').capitalize(),
-            with_abbreviations
-        )
+    def capitalize(match: Match):
+        return match.group(0).replace('_', '').capitalize()
+
+    def abbreviated_capwords(self, snake_case: str):
+        abbreviated = self.abbreviations.sub(self.abbreviate, snake_case)
+        return SNAKE_CASE.sub(self.capitalize, abbreviated)
 
     def add_method(self, routine: Routine):
         method = PyMethod(routine)
@@ -255,8 +271,8 @@ class PyMethod:
             # TODO: cx_prepare IN or IN/OUT
 
         if arg.defaulted:
-            py_in = f'{name}: {py_type} = DEFAULTED,'
-            self.cx_in.append(f'if {name} is not DEFAULTED:')
+            py_in = f'{name}: {py_type} = generic.DEFAULTED,'
+            self.cx_in.append(f'if {name} is not generic.DEFAULTED:')
             self.cx_in.append(f'    inp["{name}"] = {name}')
         else:
             py_in = f'{name}: {py_type},'
@@ -274,7 +290,7 @@ class PyMethod:
         if arg.data_type in CX_COMPLEX_TYPES:
             LOG.warning(kwargs['error'])
             self.errors.append(kwargs['error'])
-            cx_type = 'TBD'
+            cx_type = 'generic.TBD'
             # TODO: cx_prepare OUT
 
         if arg.data_type == 'ref cursor':
@@ -290,7 +306,7 @@ class PyMethod:
         if arg.data_type in CX_COMPLEX_TYPES:
             LOG.warning(kwargs['error'])
             self.errors.append(kwargs['error'])
-            out.append(f'inp["{name}"] = TBD')
+            out.append(f'inp["{name}"] = generic.TBD')
             # TODO: cx_prepare OUT
         else:
             out.append(f'inp["{name}"] = cursor.var({cx_type})')
