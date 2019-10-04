@@ -1,6 +1,6 @@
 ## Backlog:
 - [x] Code decomposition
-- [ ] Solution for abbreviations
+- [x] Solution for abbreviations
 - [ ] Check out Django's inspectdb implementation
 - [ ] Typed proc output
 - [ ] Typed func output
