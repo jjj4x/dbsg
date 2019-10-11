@@ -1,3 +1,10 @@
+# 2019.5.0
+## Post-Introspection via Introspection Appendix
+- An alpha version
+- Now you will be able to generically override the introspection results,
+  using the "introspection_appendix" section (can be provided for a schema)
+  in your configuration. Check out config_sample.yml for guidelines
+
 # 2019.4.0
 ## Abbreviations, Generic Stubs Helpers for Python
 - Still an alpha version (a working draft)

@@ -4,6 +4,10 @@
 # and users to run the tests locally to ensure the package is complete and
 # working.
 
-include LICENCE.txt README.md CHANGELOG.md
+# Some repository metadata:
+include LICENCE README.md CHANGELOG.md BACKLOG.md
+
+# Some defaults and samples:
+include config_sample.yml default_abbreviations.txt
 
 global-exclude *.py[co]

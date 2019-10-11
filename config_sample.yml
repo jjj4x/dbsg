@@ -31,6 +31,19 @@ databases:
         exclude_routines:
           - espesially_nasty_routine
           - horrible_pkg.oh_no
+        introspection_appendix:
+          # "object_id" is unique for package routines
+          # "subprogram_id" is unique for non-package routines
+          # So, you should provide both of them, so the routine can be uniquely
+          # identified
+          # If you also provide "position", the additional info will be
+          # applied for concrete argument
+          - comment: billing.some_pkg.get_bills, _dbsg_result arguemnt
+            object_id: 777
+            subprogram_id: 44
+            position: 0
+            custom_type_schema: "BILLING"
+            custom_type: "BILLS%ROWTYPE"
 
       - name: tickets
         exclude_routines: null
@@ -40,6 +53,36 @@ databases:
 
       - name: "goodies"  # include everything for the scheme
 
+# ******************************Logging Reference******************************
+# Levels:
+#   CRITICAL
+#   ERROR
+#   WARNING
+#   INFO
+#   DEBUG
+#   NOTSET
+
+# Format (record) Attributes:
+#   %(asctime)s
+#   %(filename)s
+#   %(funcName)s
+#   %(levelname)s
+#   %(levelno)s
+#   %(lineno)d
+#   %(message)s
+#   %(module)s
+#   %(name)s
+#   %(pathname)s
+#   %(process)d
+#   %(processName)s
+#   %(thread)d
+#   %(threadName)s
+
+# Sources:
+#   https://docs.python.org/3/library/logging
+#   https://docs.python.org/3/library/logging.config
+#   https://docs.python.org/3/library/logging.handlers
+# ******************************Logging Reference******************************
 logging:
   version: 1
   disable_existing_loggers: false
@@ -65,7 +108,6 @@ logging:
       stream: ext://sys.stdout
       filters:
         - app_version
-    # TODO: maybe redundant (12 factor app)
     syslog:
       class: logging.handlers.SysLogHandler
       facility: local7
@@ -73,12 +115,15 @@ logging:
       formatter: main
       filters:
         - app_version
-  root:  # The Root Logger
+  # The Root Logger
+  root:
     handlers:
       - console
       - syslog
     level: DEBUG
-  loggers:  # "propagate: true" means "use Root Logger's handlers"
+  # "propagate: true" means "use the Root Logger's handlers"
+  # Any unspecified loggers will inherit the Root Logger's setup
+  loggers:
     marshmallow:
       level: WARNING
       propagate: true

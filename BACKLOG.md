@@ -1,6 +1,8 @@
 ## Backlog:
 - [x] Code decomposition
 - [x] Solution for abbreviations
+- [x] Introspection tuning: excludes, includes, appendix...
+- [ ] Better introspection (a DDL lexer via sys.all_source)
 - [ ] Check out Django's inspectdb implementation
 - [ ] Typed proc output
 - [ ] Typed func output

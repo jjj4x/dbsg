@@ -6,7 +6,14 @@ from os import getenv, environ
 from pathlib import Path
 from re import compile
 from sys import exit
-from typing import MutableMapping, MutableSequence, Optional, Union, Pattern
+from typing import (
+    MutableMapping,
+    MutableSequence,
+    Tuple,
+    Optional,
+    Union,
+    Pattern,
+)
 
 from cx_Oracle import SessionPool, makedsn
 from marshmallow import Schema as MarshmallowSchema, post_load
@@ -27,6 +34,31 @@ class APPVersionLoggingFilter(Filter):
 
 
 # *****************************Configuration Types*****************************
+ObjectIDANDSubprogramIDANDArgumentPosition = Tuple[int, int, int]
+ObjectIDANDSubprogramID = Tuple[int, int]
+IntrospectionAppendixKey = Union[
+    ObjectIDANDSubprogramIDANDArgumentPosition,
+    ObjectIDANDSubprogramID
+]
+
+
+@dataclass
+class IntrospectionAppendix:
+    comment: str
+    object_id: int
+    subprogram_id: int
+    position: Optional[int] = field(default=None)
+    # Should match the spec of dbsg.lib.introspection.IntrospectionRow
+    new: MutableMapping = field(init=False)
+
+    def __init__(self, **kwargs):
+        self.comment = kwargs.pop('comment')
+        self.object_id = kwargs.pop('object_id')
+        self.subprogram_id = kwargs.pop('subprogram_id')
+        self.position = kwargs.pop('position', None)
+        self.new = kwargs
+
+
 @dataclass
 class FQDN:
     # TODO: docstring
@@ -49,6 +81,11 @@ class FQDN:
 class Schema:
     name: str
     no_package_name: str = field(default='')
+
+    introspection_appendix: MutableMapping[
+        IntrospectionAppendixKey,
+        IntrospectionAppendix
+    ] = field(default_factory=dict)
 
     exclude_packages: MutableSequence[FQDN] = field(default_factory=list)
     exclude_routines: MutableSequence[FQDN] = field(default_factory=list)
@@ -277,9 +314,22 @@ class PoolSchema(MarshmallowSchema):
 class SchemesSchema(MarshmallowSchema):
     name = String(required=True)
     no_package_name = String(required=False, allow_none=True)
+    introspection_appendix = List(Dict(), required=False, allow_none=True)
     exclude_packages = List(String(), required=False, allow_none=True)
     exclude_routines = List(String(), required=False, allow_none=True)
     include_routines = List(String(), required=False, allow_none=True)
+
+    @post_load
+    def post_load(self, data):
+        introspection_appendix = {}
+        for ia in data.get('introspection_appendix', []):
+            if 'position' in ia:
+                key = ia['object_id'], ia['subprogram_id'], ia['position']
+            else:
+                key = ia['object_id'], ia['subprogram_id']
+            introspection_appendix[key] = IntrospectionAppendix(**ia)
+        data['introspection_appendix'] = introspection_appendix
+        return data
 
 
 class DatabaseSchema(MarshmallowSchema):

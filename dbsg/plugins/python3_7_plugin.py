@@ -41,7 +41,7 @@ PY_SIMPLE_TYPES = {
     'clob': 'typing.Union[str, bytes]',
     'blob': 'typing.Union[str, bytes]',
     'date': 'datetime.datetime',
-    'ref cursor': 'typing.ImmutableSequence',
+    'ref cursor': 'typing.MutableSequence',
     'pl/sql boolean': 'bool',
     'binary_integer': 'int',
 }
@@ -146,6 +146,7 @@ class {package_name}(generic.Stub):
         self.abbreviations = configuration.abbreviations
         self.outcomes = configuration.outcomes
         self.package = package
+        self.name = self.abbreviated_capwords(package.name)
 
         self.imports = {'logging'}
 
@@ -168,8 +169,8 @@ class {package_name}(generic.Stub):
             path=self.path,
             errors=errors,
             imports='\n'.join(f'import {m}' for m in sorted(self.imports)),
-            package_name=self.abbreviated_capwords(self.package.name),
-            package_body='\n'.join(str(func) for func in self.methods),
+            package_name=self.name,
+            package_body='\n'.join(str(method) for method in self.methods),
         )
 
     def abbreviate(self, match: Match):
@@ -269,6 +270,7 @@ class PyMethod:
             self.errors.append(kwargs['error'])
             py_type = 'object'
             # TODO: cx_prepare IN or IN/OUT
+            cx_type = kwargs['cx_type']
 
         if arg.defaulted:
             py_in = f'{name}: {py_type} = generic.DEFAULTED,'
@@ -353,6 +355,7 @@ class PyMethod:
         signature = self.FUNCTION_INDENT.join(self.py_def)
 
         body_template = self.FUNCTION_INDENT.join(self.py_body)
+
         cx_in = self.STATEMENTS_INDENT.join(self.cx_in)
         cx_func_result_end = self.STATEMENTS_INDENT.join(self.cx_func_out_end)
         cx_proc_out = self.STATEMENTS_INDENT.join(self.cx_proc_out)

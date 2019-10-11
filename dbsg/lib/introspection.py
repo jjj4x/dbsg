@@ -1,3 +1,58 @@
+"""
+NOTES:
+    We might stumble upon a routine which has an OUT argument with
+    PL/SQL RECORD type, but HAS NO custom_type.
+
+    Also, we can't declare cursor.var(cx_Oracle.OBJECT, typename=None), because
+    typename cannot be None.
+
+    There's a dynamic solution: the PL/SQL RECORD will have its nested
+    "arguments" which we can aggregate into a string like:
+    'BILL_PERIOD,BILL_SYSTEM,BILL_USER'
+
+    After that wee can try to find some candidate tables:
+    with cols as (
+        select
+            t.owner,
+            t.table_name,
+            count(*) column_count,
+            listagg(t.column_name, ',')
+            within group (order by t.column_id) name_list,
+            listagg(t.data_type, ',')
+            within group (order by t.column_id) type_list
+        from
+            sys.all_tab_columns t,
+            (
+                select owner, table_name
+                from sys.all_tab_columns
+                group by owner, table_name
+                having count(*) < 20
+            ) short
+        where
+            t.owner = short.owner
+            and t.table_name = short.table_name
+            and t.owner = 'BILLS'
+        group by t.owner, t.table_name
+    )
+    select *
+    from cols
+    where name_list = 'BILL_PERIOD,BILL_SYSTEM,BILL_USER'
+
+    The probable typename can be deduced, like:
+    t.owner '.' || t.table_name || '%ROWTYPE'
+
+    The solution is too dynamic and error-prone, so it's better to define
+    the typename by hand, using dbsg config.
+
+    Another dynamic solution might be:
+    select *
+    from sys.all_source
+    where
+        owner = 'INAC'
+        and name = 'COMMON_TARIFF_WORKSHEET_PKG'
+        and type = 'PACKAGE BODY'
+        and text like '%get_city%return%';
+"""
 from dataclasses import dataclass, field
 from typing import MutableSequence, Optional
 from threading import Lock, Thread
@@ -5,7 +60,7 @@ from logging import getLogger
 
 from cx_Oracle import Connection, Cursor, SessionPool
 
-from dbsg.lib.configuration import Configuration, Schema
+from dbsg.lib.configuration import Configuration, Schema, IntrospectionAppendix
 
 LOG = getLogger(__name__)
 
@@ -154,6 +209,10 @@ class IntrospectionRow:
             if isinstance(attribute_value, str):
                 setattr(self, attribute_name, attribute_value.lower())
 
+    def override(self, data: IntrospectionAppendix):
+        for attr, value in data.new.items():
+            setattr(self, attr, value)
+
 
 @dataclass
 class IntrospectionSchema:
@@ -264,6 +323,19 @@ class Inspect:
             cursor.execute(sql, binds)
             cursor.rowfactory = IntrospectionRow
             rows: MutableSequence[IntrospectionRow] = cursor.fetchall()
+
+        # Override data from IntrospectionAppendix, if any
+        appendix = schema.introspection_appendix
+        for row in rows:
+            # Firstly, try to override for the whole subroutine
+            if (row.object_id, row.subprogram_id) in appendix:
+                a = appendix[(row.object_id, row.subprogram_id)]
+                row.override(a)
+
+            # Secondly, try to override the concrete argument
+            if (row.object_id, row.subprogram_id, row.position) in appendix:
+                a = appendix[(row.object_id, row.subprogram_id, row.position)]
+                row.override(a)
 
         introspection_schema = IntrospectionSchema(
             name=schema.name,
