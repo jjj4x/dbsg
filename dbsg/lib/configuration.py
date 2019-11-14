@@ -323,7 +323,7 @@ class SchemesSchema(MarshmallowSchema):
     def post_load(self, data):
         introspection_appendix = {}
         for ia in data.get('introspection_appendix', []):
-            if 'position' in ia:
+            if ia.get('position') is not None:
                 key = ia['object_id'], ia['subprogram_id'], ia['position']
             else:
                 key = ia['object_id'], ia['subprogram_id']
@@ -390,7 +390,7 @@ class ConfigSchema(MarshmallowSchema):
 CommandLineInterface = ArgumentParser()
 CommandLineInterface.add_argument(
     '--config',
-    dest='path',
+    dest='config',
     default=None,
 )
 CommandLineInterface.add_argument(
@@ -420,13 +420,13 @@ class Setup:
 
     def __init__(self):
         cli = self.CLI.parse_args().__dict__ or {}
-        path = cli.pop('path', None)
+        dbsg_conf = cli.pop('config', None)
 
         # CLI args take precedence over YAML config
         self.cli = cli
 
         # CLI path takes precedence over ENV path
-        self.path = path or getenv('DBSG_CONF', 'dbsg_config.yml')
+        self.path = dbsg_conf or getenv('DBSG_CONF', 'dbsg_config.yml')
 
     def merge_cli_with_file(self) -> MutableMapping:
         with open(self.path, 'r', encoding='utf8') as fh:

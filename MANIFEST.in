@@ -11,3 +11,6 @@ include LICENCE README.md CHANGELOG.md BACKLOG.md
 include config_sample.yml default_abbreviations.txt
 
 global-exclude *.py[co]
+
+prune stubs
+prone virtualenv

@@ -42,6 +42,17 @@ class SimpleArgument:  # Flat
             in_out=row.in_out,
         )
 
+    @property
+    def custom_type_fqdn(self):
+        return '.'.join(
+            i for i in (
+                self.custom_type_schema,
+                self.custom_type_package,
+                self.custom_type
+            )
+            if i
+        )
+
 
 @dataclass
 class ComplexArgument(SimpleArgument):  # with Nested Arguments

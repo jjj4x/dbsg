@@ -67,6 +67,8 @@ LOG = getLogger(__name__)
 INTROSPECTION_DB_ADD_NEW_SCHEMA_LOCK = Lock()
 
 COMPLEX_TYPES = (
+    'ref cursor',
+    'object',
     'varray',
     'table',
     'record',

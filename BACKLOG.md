@@ -9,8 +9,10 @@
 - [ ] Typed output for cursors
 - [ ] Connection Pool handling (disconnection)
 - [ ] Acknowledge contributors
-- [ ] Complex (data_level > 1) IN
-- [ ] Complex OUT arguments
+- [X] Complex (data_level == 1) IN
+- [X] Complex OUT arguments
+- [ ] Generically Complex arguments
+- [ ] ref cursor handling
 - [ ] Complex IN/OUT arguments
 - [x] Better CLI interface
 - [ ] Style Guide Linter

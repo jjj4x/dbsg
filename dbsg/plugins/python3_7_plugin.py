@@ -4,6 +4,7 @@ from re import compile
 from typing import MutableSequence, Match
 
 from dbsg.lib.configuration import Configuration
+from dbsg.lib.introspection import COMPLEX_TYPES
 from dbsg.lib.intermediate_representation import Argument, Routine, Package
 from dbsg.lib.plugin import PluginABC
 
@@ -12,13 +13,6 @@ LOG = getLogger(__name__)
 REGISTRY_NAME = 'python3.7'
 
 SNAKE_CASE = compile(r'^\w|_\w')
-CX_COMPLEX_TYPES = (
-    'varray',
-    'table',
-    'record',
-    'pl/sql table',
-    'pl/sql record',
-)
 CX_SIMPLE_TYPES = {
     'number': 'cx_Oracle.NUMBER',
     'varchar2': 'cx_Oracle.STRING',
@@ -40,7 +34,11 @@ PY_SIMPLE_TYPES = {
     'nchar': 'str',
     'clob': 'typing.Union[str, bytes]',
     'blob': 'typing.Union[str, bytes]',
+    'raw': 'typing.Union[str, bytes]',
     'date': 'datetime.datetime',
+    'timestamp': 'datetime.datetime',
+    'timestamp with time zone': 'datetime.datetime',
+    'timestamp with local time zone': 'datetime.datetime',
     'ref cursor': 'typing.MutableSequence',
     'pl/sql boolean': 'bool',
     'binary_integer': 'int',
@@ -134,7 +132,7 @@ import {path}.generic as generic
 LOG = logging.getLogger(__name__)
 
 
-# noinspection PyShadowingBuiltins,DuplicatedCode
+# noinspection DuplicatedCode,PyPep8Naming
 class {package_name}(generic.Stub):
 {package_body}
 
@@ -230,10 +228,10 @@ class PyMethod:
                 'cursor = self.cursor',
                 'with cursor:',
                 '    {cx_in}',
-                '    result = cursor.callfunc(',
+                '    {cx_out}',
+                '    out = cursor.callfunc(',
                 '        "{cx_call_name}",',
                 '        {cx_func_out},',
-                '        parameters=[],',
                 '        keywordParameters=inp,',
                 '    )',
                 '    {cx_func_out_end}'
@@ -244,41 +242,88 @@ class PyMethod:
                 'cursor = self.cursor',
                 'with cursor:',
                 '    {cx_in}',
-                '    {cx_proc_out}',
+                '    {cx_out}',
                 '    cursor.callproc(',
                 '       "{cx_call_name}",',
-                '       parameters=[],',
                 '       keywordParameters=inp,',
                 '    )',
+                '    {cx_proc_out_end}',
             ]
 
         self.cx_call_name = routine.fqdn
         self.cx_in = []
+        self.cx_out = []
         self.cx_func_out = ''
         self.cx_func_out_end = []
-        self.cx_proc_out = []
+        self.cx_proc_out_end = ''
 
         # The calls have overhead, but have no side-effects
         self.process_arguments()
 
-    def process_in(self, arg: Argument, **kwargs):
+    def process_in_(self, arg: Argument, indent='', **kwargs):
+        _ = indent
+        __ = indent + '    '
         name = kwargs['name']
         py_type = kwargs['py_type']
+        if arg.data_type in COMPLEX_TYPES:
+            self.imports.add('typing')
+            arg_ct = arg.custom_type_fqdn.upper()
 
-        if arg.data_type in CX_COMPLEX_TYPES:
-            LOG.warning(kwargs['error'])
-            self.errors.append(kwargs['error'])
-            py_type = 'object'
-            # TODO: cx_prepare IN or IN/OUT
-            cx_type = kwargs['cx_type']
+            if arg.data_type in ('varray', 'table', 'pl/sql table'):
+                if (
+                    arg.arguments
+                    and arg.last_argument.data_type in PY_SIMPLE_TYPES
+                ):
+                    nested_type = PY_SIMPLE_TYPES[arg.last_argument.data_type]
+                    self.cx_in.append(f'{_}inp["{name}"] = {name}')
+                else:
+                    nested_type = 'typing.Mapping'
+                    nested_arg_ct = arg.last_argument.custom_type_fqdn.upper()
+                    self.cx_in.append(f'{_}inp["{name}"] = cursor.var(')
+                    self.cx_in.append(f'{__}cx_Oracle.OBJECT,')
+                    self.cx_in.append(f'{__}typename="{arg_ct}",')
+                    self.cx_in.append(f'{_}).type.newobject()')
+                    self.cx_in.append(f'{_}nested_type = cursor.var(')
+                    self.cx_in.append(f'{__}cx_Oracle.OBJECT,')
+                    self.cx_in.append(f'{__}typename="{nested_arg_ct}",')
+                    self.cx_in.append(f'{_}).type')
+                    self.cx_in.append(f'{_}for el in {name}:')
+                    self.cx_in.append(f'{__}nested = nested_type.newobject()')
+                    for nested_of_nested in arg.last_argument.arguments:
+                        n = nested_of_nested.name
+                        self.cx_in.append(f'{__}nested.{n.upper()} = el["{n}"]')
+                    self.cx_in.append(f'{__}inp["{name}"].append(nested)')
 
-        if arg.defaulted:
-            py_in = f'{name}: {py_type} = generic.DEFAULTED,'
-            self.cx_in.append(f'if {name} is not generic.DEFAULTED:')
-            self.cx_in.append(f'    inp["{name}"] = {name}')
+                py_type = f'typing.MutableSequence[{nested_type}]'
+
+            if arg.data_type in ('object', 'record', 'pl/sql record'):
+                self.cx_in.append(f'{_}inp["{name}"] = cursor.var(')
+                self.cx_in.append(f'{__}cx_Oracle.OBJECT,')
+                self.cx_in.append(f'{__}typename="{arg_ct}",')
+                self.cx_in.append(f'{_}).type.newobject()')
+                for nested in arg.arguments:
+                    n = nested.name
+                    self.cx_in.append(
+                        f'{_}inp["{name}"].{n.upper()} = {name}["{n}"]'
+                    )
+
+                py_type = f'typing.Mapping'
+
         else:
+            self.cx_in.append(f'{_}inp["{name}"] = {name}')
+
+        return py_type
+
+    def process_in(self, arg: Argument, **kwargs):
+        name = kwargs['name']
+        if arg.defaulted:
+            self.imports.add('typing')
+            self.cx_in.append(f'if {name} is not generic.DEFAULTED:')
+            py_type = self.process_in_(arg, indent='    ', **kwargs)
+            py_in = f'{name}: typing.Optional[{py_type}] = generic.DEFAULTED,'
+        else:
+            py_type = self.process_in_(arg, indent='', **kwargs)
             py_in = f'{name}: {py_type},'
-            self.cx_in.append(f'inp["{name}"] = {name}')
 
         self.py_def.append(py_in)
 
@@ -286,69 +331,169 @@ class PyMethod:
             module, *_ = py_type.split('.')
             self.imports.add(module)
 
+    def process_in_out(self, arg: Argument, **kwargs):
+        # TODO: proc in/out
+        name = kwargs['name']
+
+        if arg.defaulted:
+            LOG.warning('is not supported yet')
+
+            py_in = f'{name}: typing.Optional[typing.Any] = generic.DEFAULTED,'
+        else:
+            py_in = f'{name}: typing.Any,'
+
+        self.imports.add('typing')
+        self.py_def.append(py_in)
+
     def process_function_out(self, arg: Argument, **kwargs):
+        name = kwargs['name']
         cx_type = kwargs['cx_type']
 
-        if arg.data_type in CX_COMPLEX_TYPES:
-            LOG.warning(kwargs['error'])
-            self.errors.append(kwargs['error'])
-            cx_type = 'generic.TBD'
-            # TODO: cx_prepare OUT
-
         if arg.data_type == 'ref cursor':
-            self.cx_func_out_end.append('result = result.fetchall()')
+            self.cx_func_out = cx_type
+            self.cx_func_out_end.append('out = out.fetchall()')
 
-        self.cx_func_out = cx_type
+        elif arg.data_type in COMPLEX_TYPES:
+            self.cx_func_out = arg.name
+            arg_ct = arg.custom_type_fqdn.upper()
+
+            if arg_ct:
+                typename = f'"{arg_ct}",'
+            else:
+                typename = f'"",  # FIXME: undefined; probably a %ROWTYPE'
+                error_msg = (
+                    f'FIXME: {self.routine.type.capitalize()} '
+                    f'{self.py_name} ({self.cx_call_name}) has an undefined '
+                    f'typename for {arg.in_out} argument "{arg.name}". '
+                    f'It is probably a %ROWTYPE which you can provide via '
+                    f'confing.'
+                )
+                LOG.warning(error_msg)
+                self.errors.append(error_msg)
+
+            cx_type = [
+                f'{name} = cursor.var(',
+                f'    cx_Oracle.OBJECT,',
+                f'    typename={typename}',
+                f')',
+            ]
+            self.cx_out.extend(cx_type)
+
+            # TODO: currently only data_level == 1
+            if arg.data_type in ('varray', 'table', 'pl/sql table'):
+                # It seems that table-like args cannot have more that 1 nested
+                # argument
+
+                if arg.last_argument.data_type == 'object':
+                    self.cx_func_out_end.append('out = [')
+                    self.cx_func_out_end.append('    {')
+                    self.cx_func_out_end.append(
+                        '        attr.name.lower(): getattr(obj, attr.name)'
+                    )
+                    self.cx_func_out_end.append(
+                        '        for attr in obj.type.attributes'
+                    )
+                    self.cx_func_out_end.append('    }')
+                    self.cx_func_out_end.append('    for obj in out.aslist()')
+                    self.cx_func_out_end.append(']')
+                elif arg.last_argument.data_type in ('record', 'pl/sql record'):
+                    self.cx_func_out_end.append(
+                        '# FIXME: table of records is probably not supported '
+                        'on library level!'
+                    )
+                    self.cx_func_out_end.append('out = [')
+                    self.cx_func_out_end.append('    {')
+                    for nested_of_nested in arg.last_argument.arguments:
+                        n = nested_of_nested.name
+                        self.cx_func_out_end.append(
+                            f'        "{n}": rec.{n.upper()},'
+                        )
+                    self.cx_func_out_end.append('    }')
+                    self.cx_func_out_end.append('    for rec in out or []')
+                    self.cx_func_out_end.append(']')
+                else:
+                    self.cx_func_out_end.append('out = out.aslist()')
+
+            if arg.data_type in ('object', 'record', 'pl/sql record'):
+                self.cx_func_out_end.append('out = {')
+                for nested in arg.arguments:
+                    n = nested.name
+                    self.cx_func_out_end.append(f'    "{n}": out.{n.upper()},')
+                self.cx_func_out_end.append('}')
+
+        else:
+            self.cx_func_out = cx_type
 
     def process_procedure_out(self, arg: Argument, **kwargs):
         name = kwargs['name']
         cx_type = kwargs['cx_type']
 
-        out = []
-        if arg.data_type in CX_COMPLEX_TYPES:
-            LOG.warning(kwargs['error'])
-            self.errors.append(kwargs['error'])
-            out.append(f'inp["{name}"] = generic.TBD')
-            # TODO: cx_prepare OUT
+        # TODO: possibly complex
+        if arg.data_type == 'ref cursor':
+            self.cx_out.append(f'inp["{name}"] = cursor.var(cx_Oracle.CURSOR)')
+            get_val = f'    out["{name}"] = inp["{name}"].getvalue().fetchall()'
+
+        elif arg.data_type in COMPLEX_TYPES:
+            arg_ct = arg.custom_type_fqdn.upper()
+
+            if arg.data_type in ('object', 'record', 'pl/sql record'):
+                self.cx_out.append(f'inp["{name}"] = cursor.var(')
+                self.cx_out.append(f'    cx_Oracle.OBJECT,')
+                self.cx_out.append(f'    typename="{arg_ct}",')
+                self.cx_out.append(f')')
+
+            if arg.data_type in ('varray', 'table', 'pl/sql table'):
+                if (
+                    arg.arguments
+                    and arg.last_argument.data_type
+                    in PY_SIMPLE_TYPES
+                ):
+                    self.cx_in.append(f'inp["{name}"] = {name}')
+                else:
+                    # TODO: probably a table of records.
+                    #  Should such args be post-processed?
+                    self.cx_out.append(f'inp["{name}"] = cursor.var(')
+                    self.cx_out.append(f'    cx_Oracle.OBJECT,')
+                    self.cx_out.append(f'    typename="{arg_ct}",')
+                    self.cx_out.append(f')')
+
+            # TODO: complex objects handling
+            get_val = f'    out["{name}"] = inp["{name}"].getvalue()'
+
         else:
-            out.append(f'inp["{name}"] = cursor.var({cx_type})')
+            self.cx_out.append(f'inp["{name}"] = cursor.var({cx_type})')
+            get_val = f'    out["{name}"] = inp["{name}"].getvalue()'
 
-        out.append(f'out.append(inp["{name}"])')
-
-        self.cx_proc_out.extend(out)
+        # self.cx_out.append(f'out["{name}"] = inp["{name}"]')
+        self.py_body.append(get_val)
 
     def process_arguments(self):
         # In ORACLE, defaulted arguments may be placed at any position
         # In Python, we should place them at the end
         for arg in self.routine.sorted_arguments:
-            name = arg.name if not iskeyword(arg.name) else f'{arg.name}_'
             generic_info = {
                 'cx_type': CX_SIMPLE_TYPES.get(arg.data_type),
-                'py_type': PY_SIMPLE_TYPES.get(arg.data_type),
-                'name': name,
-                'error': (
-                    f'{self.routine.type.capitalize()} '
-                    f'{self.py_name} ({self.cx_call_name}) has unsupported '
-                    f'"{arg.in_out}" argument "{name}": {arg.data_type}'
-                ),
+                'py_type': PY_SIMPLE_TYPES.get(arg.data_type, 'object'),
+                'name': arg.name if not iskeyword(arg.name) else f'{arg.name}_',
             }
 
-            if arg.in_out != 'out':  # IN or IN/OUT arg
+            if arg.in_out == 'in':
                 self.process_in(arg, **generic_info)
-            elif self.routine.type == 'function':  # OUT arg and FUNCTION
+            elif arg.in_out == 'out' and self.routine.type == 'function':
                 self.process_function_out(arg, **generic_info)
-            else:  # OUT arg and PROCEDURE
+            elif arg.in_out == 'out' and self.routine.type == 'procedure':
                 self.process_procedure_out(arg, **generic_info)
+            else:  # proc in/out
+                self.process_in_out(arg, **generic_info)
 
         if self.routine.type == 'procedure':
-            if self.cx_proc_out:
-                self.cx_proc_out.insert(0, 'out = []')
-                self.py_body.append('result = [arg.getvalue() for arg in out]')
-                self.py_body.append('return result')
+            if self.cx_out:
+                self.cx_proc_out_end = 'out = dict()'
+                self.py_body.append('return out')
             else:
                 self.py_body.append('return None')
         else:
-            self.py_body.append('return result')
+            self.py_body.append('return out')
 
     def __repr__(self):
         name = self.py_name
@@ -356,16 +501,26 @@ class PyMethod:
 
         body_template = self.FUNCTION_INDENT.join(self.py_body)
 
-        cx_in = self.STATEMENTS_INDENT.join(self.cx_in)
-        cx_func_result_end = self.STATEMENTS_INDENT.join(self.cx_func_out_end)
-        cx_proc_out = self.STATEMENTS_INDENT.join(self.cx_proc_out)
+        cx_in = (
+            self.STATEMENTS_INDENT.join(self.cx_in)
+            or '# No IN pre-processing'
+        )
+        cx_out = (
+            self.STATEMENTS_INDENT.join(self.cx_out)
+            or '# No OUT pre-processing'
+        )
+        cx_func_result_end = (
+            self.STATEMENTS_INDENT.join(self.cx_func_out_end)
+            or '# No Function OUT post-processing'
+        )
 
         body = body_template.format(
             cx_in=cx_in,
             cx_call_name=self.cx_call_name,
             cx_func_out=self.cx_func_out,
             cx_func_out_end=cx_func_result_end,
-            cx_proc_out=cx_proc_out,
+            cx_proc_out_end=self.cx_proc_out_end,
+            cx_out=cx_out,
         )
 
         return self.TEMPLATE.format(name=name, signature=signature, body=body)

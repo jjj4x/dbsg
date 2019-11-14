@@ -1,16 +1,27 @@
 # Default Abbreviations Dictionary
 
+# It is assumed that DB packages are named in "snake_case", like "billing_pac".
+# In Python, we want to generate class names using "CapWordsCase", like
+#   "class BillingPac(...):"
+# But we also want to automatically account for abbreviations, transforming
+#   "http_utils_pkg"
+#   into "class HTTPUtilsPkg(...):"
+#   instead of ugly "class HttpUtilsPkg(...):"
+
+
 # Some rules:
 # 1. Comments amd blanks in the file are ignored
-# 2. The words will be uppercased, like:
+# 2. Abbreviation words will be uppercased, like:
 #    - http_package -> HTTPPackage (for http abbreviation)
 #    - sql_generic_api -> SQLGenericAPI (for sql and api abbreviations)
 # 3. The boundaries are \b or _, so with "eset" abbreviation, eset_pkg
 #    will become ESETPkg, but preset_pkg will stay PresetPkg
-# 4. Abbreviations separated by "=" considered to have a concrete outcome, so
-#    wifi = Wifi will yield WiFiHelpers from wifi_helpers, and with
-#    helpdesk = HD you can transform helpdesk_routines into HDRoutines, and
-#    ex_data_base_utils = DB will yield DBPkg from ex_data_base_utils_pkg
+# 4. Abbreviations separated by "=" are considered to have the concrete outcome,
+#    so "wifi = WiFi" will yield "WiFiHelpers" from "wifi_helpers", and with
+#    "helpdesk = HD" you can transform "helpdesk_routines" into "HDRoutines",
+#    and "ex_data_base_utils = DB" will yield "DBPkg" from "ex_data_base_utils_pkg"
+
+# Abbreviations:
 api
 html
 http
@@ -18,14 +29,10 @@ sql
 xml
 auto_pp  = AutoPP  # promised payment
 fttb  # fiber to the building
-iptv_services
+iptv
 ott  # over the top
 inac  # internet accounting
-tve
-mtopup
 eset
-uss
-usss
 wifi = WiFi
 drweb = DrWEB
 helpdesk = HelpDesk
