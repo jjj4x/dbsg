@@ -1,6 +1,7 @@
+"""Python Representation Plugin."""
 from keyword import iskeyword
 from logging import getLogger
-from re import compile
+from re import compile as re_compile
 from typing import MutableSequence, Match
 
 from dbsg.lib.configuration import Configuration
@@ -12,7 +13,7 @@ LOG = getLogger(__name__)
 
 REGISTRY_NAME = 'python3.7'
 
-SNAKE_CASE = compile(r'^\w|_\w')
+SNAKE_CASE = re_compile(r'^\w|_\w')
 CX_SIMPLE_TYPES = {
     'number': 'cx_Oracle.NUMBER',
     'varchar2': 'cx_Oracle.STRING',
@@ -48,6 +49,8 @@ LF = '\n'  # line feed (new line)
 
 
 class Plugin(PluginABC):
+    """Python representation plugin."""
+
     GENERIC_MODULE_TEMPLATE = '''\
 """
 The package is auto-generated. Don't edit it by hand -- changes won't persist.
@@ -73,6 +76,7 @@ class TBD:
 '''
 
     def __init__(self, configuration, introspection, ir, **kwargs):
+        """Initialize Python representation plugin."""
         self.configuration = configuration
         self.introspection = introspection
         self.ir = ir
@@ -80,9 +84,11 @@ class TBD:
 
     @classmethod
     def name(cls):
+        """Alias in REGISTRY."""
         return REGISTRY_NAME
 
     def save(self, **kwargs):
+        """Save Python representation into the corresponding modules."""
         path = self.configuration.path.absolute()
         path.mkdir(parents=True, exist_ok=True)
         (path / '__init__.py').touch(exist_ok=True)
@@ -110,14 +116,16 @@ class TBD:
                         python_module.add_method(routine)
 
                     module = schema_path / f'{package.name}.py'
-                    with module.open('w', encoding='utf8') as fd:
-                        fd.write(str(python_module))
+                    with module.open('w', encoding='utf8') as fd:  # noqa: WPS440,E501
+                        fd.write(str(python_module))  # noqa: WPS441
 
 
 Python37Plugin = Plugin
 
 
 class PyModule:
+    """Python Module and Python Class for the corresponding DB package."""
+
     TEMPLATE = '''\
 """
 The package is auto-generated. Don't edit it by hand -- changes won't persist.
@@ -139,6 +147,7 @@ class {package_name}(generic.Stub):
 '''
 
     def __init__(self, configuration: Configuration, package: Package):
+        """Initialize python module."""
         self.path = configuration.path
         # Abbreviations RegEx is made dynamically on the Configuration stage
         self.abbreviations = configuration.abbreviations
@@ -156,6 +165,7 @@ class {package_name}(generic.Stub):
         self.methods: MutableSequence[PyMethod] = []
 
     def __repr__(self):
+        """Python Module and Python Class string representation."""
         errors = ''
         if self.errors:
             errors = (
@@ -172,18 +182,26 @@ class {package_name}(generic.Stub):
         )
 
     def abbreviate(self, match: Match):
+        """Make an abbreviation."""
         word = match.group(0)
         return self.outcomes.get(word) or word.upper()
 
     @staticmethod
     def capitalize(match: Match):
+        """Capitalize."""
         return match.group(0).replace('_', '').capitalize()
 
     def abbreviated_capwords(self, snake_case: str):
+        """Make abbreviated CapWord from the snake_case name."""
         abbreviated = self.abbreviations.sub(self.abbreviate, snake_case)
         return SNAKE_CASE.sub(self.capitalize, abbreviated)
 
     def add_method(self, routine: Routine):
+        """
+        Add python method into the python class.
+
+        Methods should be added only via this entry point.
+        """
         method = PyMethod(routine)
         self.imports.update(method.imports)
         self.errors.extend(method.errors)
@@ -192,6 +210,8 @@ class {package_name}(generic.Stub):
 
 
 class PyMethod:
+    """Python method."""
+
     TEMPLATE = '''\
     def {name}(
         {signature}
@@ -202,6 +222,7 @@ class PyMethod:
     STATEMENTS_INDENT = f'\n{3 * WS}'  # package class -> method body -> with
 
     def __init__(self, routine: Routine):
+        """Initialize python method for a corresponding DB routine."""
         self.routine = routine
 
         # The info should be dispatched into Python Module (DB Package) Level
@@ -260,7 +281,8 @@ class PyMethod:
         # The calls have overhead, but have no side-effects
         self.process_arguments()
 
-    def process_in_(self, arg: Argument, indent='', **kwargs):
+    def process_in_with_indent(self, arg: Argument, indent='', **kwargs):
+        """Actual IN argument processing."""
         _ = indent
         __ = indent + '    '
         name = kwargs['name']
@@ -269,7 +291,7 @@ class PyMethod:
             self.imports.add('typing')
             arg_ct = arg.custom_type_fqdn.upper()
 
-            if arg.data_type in ('varray', 'table', 'pl/sql table'):
+            if arg.data_type in {'varray', 'table', 'pl/sql table'}:
                 if (
                     arg.arguments
                     and arg.last_argument.data_type in PY_SIMPLE_TYPES
@@ -296,7 +318,7 @@ class PyMethod:
 
                 py_type = f'typing.MutableSequence[{nested_type}]'
 
-            if arg.data_type in ('object', 'record', 'pl/sql record'):
+            if arg.data_type in {'object', 'record', 'pl/sql record'}:
                 self.cx_in.append(f'{_}inp["{name}"] = cursor.var(')
                 self.cx_in.append(f'{__}cx_Oracle.OBJECT,')
                 self.cx_in.append(f'{__}typename="{arg_ct}",')
@@ -312,17 +334,18 @@ class PyMethod:
         else:
             self.cx_in.append(f'{_}inp["{name}"] = {name}')
 
-        return py_type
+        return py_type  # noqa: WPS331
 
     def process_in(self, arg: Argument, **kwargs):
+        """Process any IN argument."""
         name = kwargs['name']
         if arg.defaulted:
             self.imports.add('typing')
             self.cx_in.append(f'if {name} is not generic.DEFAULTED:')
-            py_type = self.process_in_(arg, indent='    ', **kwargs)
+            py_type = self.process_in_with_indent(arg, indent='    ', **kwargs)
             py_in = f'{name}: typing.Optional[{py_type}] = generic.DEFAULTED,'
         else:
-            py_type = self.process_in_(arg, indent='', **kwargs)
+            py_type = self.process_in_with_indent(arg, indent='', **kwargs)
             py_in = f'{name}: {py_type},'
 
         self.py_def.append(py_in)
@@ -332,6 +355,7 @@ class PyMethod:
             self.imports.add(module)
 
     def process_in_out(self, arg: Argument, **kwargs):
+        """Process any IN/OUT argument."""
         # TODO: proc in/out
         name = kwargs['name']
 
@@ -346,6 +370,7 @@ class PyMethod:
         self.py_def.append(py_in)
 
     def process_function_out(self, arg: Argument, **kwargs):
+        """Process Function OUT argument."""
         name = kwargs['name']
         cx_type = kwargs['cx_type']
 
@@ -363,10 +388,10 @@ class PyMethod:
                 typename = f'"",  # FIXME: undefined; probably a %ROWTYPE'
                 error_msg = (
                     f'FIXME: {self.routine.type.capitalize()} '
-                    f'{self.py_name} ({self.cx_call_name}) has an undefined '
-                    f'typename for {arg.in_out} argument "{arg.name}". '
-                    f'It is probably a %ROWTYPE which you can provide via '
-                    f'confing.'
+                    + f'{self.py_name} ({self.cx_call_name}) has an undefined '
+                    + f'typename for {arg.in_out} argument "{arg.name}". '
+                    + 'It is probably a %ROWTYPE which you can provide via '
+                    + 'confing.'
                 )
                 LOG.warning(error_msg)
                 self.errors.append(error_msg)
@@ -380,7 +405,7 @@ class PyMethod:
             self.cx_out.extend(cx_type)
 
             # TODO: currently only data_level == 1
-            if arg.data_type in ('varray', 'table', 'pl/sql table'):
+            if arg.data_type in {'varray', 'table', 'pl/sql table'}:
                 # It seems that table-like args cannot have more that 1 nested
                 # argument
 
@@ -396,10 +421,10 @@ class PyMethod:
                     self.cx_func_out_end.append('    }')
                     self.cx_func_out_end.append('    for obj in out.aslist()')
                     self.cx_func_out_end.append(']')
-                elif arg.last_argument.data_type in ('record', 'pl/sql record'):
+                elif arg.last_argument.data_type in {'record', 'pl/sql record'}:
                     self.cx_func_out_end.append(
                         '# FIXME: table of records is probably not supported '
-                        'on library level!'
+                        + 'on library level!'
                     )
                     self.cx_func_out_end.append('out = [')
                     self.cx_func_out_end.append('    {')
@@ -414,7 +439,7 @@ class PyMethod:
                 else:
                     self.cx_func_out_end.append('out = out.aslist()')
 
-            if arg.data_type in ('object', 'record', 'pl/sql record'):
+            if arg.data_type in {'object', 'record', 'pl/sql record'}:
                 self.cx_func_out_end.append('out = {')
                 for nested in arg.arguments:
                     n = nested.name
@@ -425,6 +450,7 @@ class PyMethod:
             self.cx_func_out = cx_type
 
     def process_procedure_out(self, arg: Argument, **kwargs):
+        """Process Procedure OUT argument."""
         name = kwargs['name']
         cx_type = kwargs['cx_type']
 
@@ -436,13 +462,13 @@ class PyMethod:
         elif arg.data_type in COMPLEX_TYPES:
             arg_ct = arg.custom_type_fqdn.upper()
 
-            if arg.data_type in ('object', 'record', 'pl/sql record'):
+            if arg.data_type in {'object', 'record', 'pl/sql record'}:
                 self.cx_out.append(f'inp["{name}"] = cursor.var(')
                 self.cx_out.append(f'    cx_Oracle.OBJECT,')
                 self.cx_out.append(f'    typename="{arg_ct}",')
                 self.cx_out.append(f')')
 
-            if arg.data_type in ('varray', 'table', 'pl/sql table'):
+            if arg.data_type in {'varray', 'table', 'pl/sql table'}:
                 if (
                     arg.arguments
                     and arg.last_argument.data_type
@@ -464,10 +490,10 @@ class PyMethod:
             self.cx_out.append(f'inp["{name}"] = cursor.var({cx_type})')
             get_val = f'    out["{name}"] = inp["{name}"].getvalue()'
 
-        # self.cx_out.append(f'out["{name}"] = inp["{name}"]')
         self.py_body.append(get_val)
 
     def process_arguments(self):
+        """Arguments processing entry point."""
         # In ORACLE, defaulted arguments may be placed at any position
         # In Python, we should place them at the end
         for arg in self.routine.sorted_arguments:
@@ -496,6 +522,7 @@ class PyMethod:
             self.py_body.append('return out')
 
     def __repr__(self):
+        """Python method representation."""
         name = self.py_name
         signature = self.FUNCTION_INDENT.join(self.py_def)
 

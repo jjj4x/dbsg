@@ -1,3 +1,4 @@
+"""Intermediate Representation types and utilities."""
 from dataclasses import dataclass, field
 from typing import MutableSequence, Union, Optional
 
@@ -10,10 +11,13 @@ from dbsg.lib.introspection import (
 
 # **********************INTERMEDIATE REPRESENTATION TYPES**********************
 Argument = Union['SimpleArgument', 'ComplexArgument']
+# TODO: make generic arguments helper mixin
 
 
 @dataclass
 class SimpleArgument:  # Flat
+    """IR Argument superclass."""
+
     name: str
     position: int
     sequence: int
@@ -28,6 +32,7 @@ class SimpleArgument:  # Flat
 
     @classmethod
     def from_row(cls, row: IntrospectionRow):
+        """Make IR argument type from an Introspection Row."""
         return cls(
             name=row.argument,
             position=row.position,
@@ -43,7 +48,8 @@ class SimpleArgument:  # Flat
         )
 
     @property
-    def custom_type_fqdn(self):
+    def custom_type_fqdn(self):  # FIXME: place into the CompleArgument?
+        """Make fqdn for complex custom types."""
         return '.'.join(
             i for i in (
                 self.custom_type_schema,
@@ -56,18 +62,22 @@ class SimpleArgument:  # Flat
 
 @dataclass
 class ComplexArgument(SimpleArgument):  # with Nested Arguments
+    """IR Complex argument extension."""
+
     arguments: MutableSequence[Argument] = field(default_factory=list)
 
     @property
     def direct_child_data_level(self):
-        """If ComplexArgument has lvl == 2, its arguments have lvl == 3"""
+        """If ComplexArgument has lvl == 2, its arguments have lvl == 3."""
         return self.data_level + 1
 
     @property
     def last_argument(self) -> COMPLEX_TYPES:
+        """Last argument shortcut."""
         return self.arguments[-1]
 
     def dispatch_argument(self, argument: Argument):
+        """Dispatch an argument into appropriate data level."""
         # NOTE: Data Level == 0 is handled at the Routine level
         # NOTE: Data Level < direct_child_data_level is handled by Parents
 
@@ -82,6 +92,8 @@ class ComplexArgument(SimpleArgument):  # with Nested Arguments
 
 @dataclass
 class Routine:
+    """IR routine type."""
+
     name: str
     type: str
     object_id: int
@@ -92,6 +104,7 @@ class Routine:
 
     @classmethod
     def from_row(cls, row: IntrospectionRow):
+        """Make IR routine type from IntrospectionRow factory."""
         routine = cls(
             name=row.routine,
             type=row.routine_type,
@@ -99,7 +112,7 @@ class Routine:
             overload=row.overload,
             subprogram_id=row.subprogram_id,
         )
-        routine.fqdn = FQDN(
+        routine.fqdn = FQDN(  # noqa: WPS601
             row.schema,
             row.package if row.is_package else '',
             row.routine
@@ -108,9 +121,11 @@ class Routine:
 
     @property
     def last_argument(self) -> Argument:
+        """Last argument shortcut."""
         return self.arguments[-1]
 
     def dispatch_argument(self, argument: Argument):
+        """Dispatch an argument into appropriate data level."""
         # Data Level == 0 should be placed at the Top
         if argument.data_level == 0:
             self.arguments.append(argument)
@@ -121,15 +136,19 @@ class Routine:
 
     @property
     def sorted_arguments(self) -> MutableSequence[Argument]:
+        """Sort argument, placing default one to the end."""
         return sorted(self.arguments, key=lambda a: a.defaulted)
 
     @property
     def has_ins(self):
+        """Check for IN or IN/OUT arguments."""
         return any(a for a in self.arguments if a.in_out != 'out')
 
 
 @dataclass
 class Package:
+    """IR package type."""
+
     name: str
     is_package: bool
     routines: MutableSequence[Routine] = field(default_factory=list)
@@ -137,20 +156,25 @@ class Package:
 
 @dataclass
 class Schema:
+    """IR Schema type."""
+
     name: str
     packages: MutableSequence[Package] = field(default_factory=list)
 
 
 @dataclass
 class Database:
+    """IR DB type."""
+
     name: str
     schemes: MutableSequence[Schema] = field(default_factory=list)
 
     def __post_init__(self):
+        """Lowercase the name for consistency."""
         self.name = self.name.lower()
 
     def dispatch_routine(self, row: IntrospectionRow, routine: Routine):
-        """Dispatch the Routine into appropriate <schema.package>"""
+        """Dispatch the Routine into appropriate <schema.package>."""
         if self.schemes and row.schema == self.schemes[-1].name:
             schema = self.schemes[-1]
         else:
@@ -171,16 +195,21 @@ IR = MutableSequence[Database]
 
 
 class Abstract:
+    """Intermediate Representation Factory."""
+
     def __init__(self, introspection: Introspection):
+        """Initialize IR with Introspection."""
         self.introspection = introspection
 
     def intermediate_representation(self) -> IR:
+        """Parse introspection and make intermediate representation."""
         intermediate_representation = []
 
         for introspected in self.introspection:
             database = Database(name=introspected.name)
             routine: Optional[Routine] = None  # None before first iteration
-            oid = sid = None
+            oid = None
+            sid = None
 
             # Can be multi-threaded/processed later
             for schema in introspected.schemes:

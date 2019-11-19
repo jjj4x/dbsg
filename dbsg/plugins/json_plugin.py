@@ -1,3 +1,4 @@
+"""JSON plugin module."""
 from dataclasses import asdict
 from json import dumps
 
@@ -7,7 +8,10 @@ REGISTRY_NAME = 'json'
 
 
 class Plugin(PluginABC):
+    """JSON plugin."""
+
     def __init__(self, configuration, introspection, ir, **kwargs):
+        """Initialize JSON plugin."""
         self.configuration = configuration
         self.introspection = introspection
         self.ir = ir
@@ -18,9 +22,11 @@ class Plugin(PluginABC):
 
     @classmethod
     def name(cls):
+        """Alias in REGISTRY."""
         return REGISTRY_NAME
 
     def save(self, **kwargs):
+        """Save JSON representation into an appropriate file."""
         kwargs = kwargs or self.kwargs
         path = self.configuration.path.absolute()
         path.mkdir(parents=True, exist_ok=True)

@@ -1,8 +1,15 @@
+# 2019.7.0
+## Style Guide and Refactoring
+- tox.ini
+- wemake-python-styleguide
+- Corresponding refactoring
+- setup.cfg refactoring
+
 # 2019.6.0
 ## Fixes and improvements in Configuration, Introspection, IR. Python Plugin
 - Beta version
 - Some fixes and improvements
-- Python code now generates pretty consistently
+- Python code now generates pretty consistently with typed input
 
 # 2019.5.0
 ## Post-Introspection via Introspection Appendix

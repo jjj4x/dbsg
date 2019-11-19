@@ -1,4 +1,6 @@
 """
+Introspection types and utilities.
+
 NOTES:
     We might stumble upon a routine which has an OUT argument with
     PL/SQL RECORD type, but HAS NO custom_type.
@@ -52,13 +54,14 @@ NOTES:
         and name = 'COMMON_TARIFF_WORKSHEET_PKG'
         and type = 'PACKAGE BODY'
         and text like '%get_city%return%';
+
 """
 from dataclasses import dataclass, field
 from typing import MutableSequence, Optional
 from threading import Lock, Thread
 from logging import getLogger
 
-from cx_Oracle import Connection, Cursor, SessionPool
+from cx_Oracle import Connection, SessionPool
 
 from dbsg.lib.configuration import Configuration, Schema, IntrospectionAppendix
 
@@ -180,6 +183,8 @@ INTROSPECTION_ORDER_CLAUSE = (
 # *****************************INTROSPECTION TYPES*****************************
 @dataclass
 class IntrospectionRow:
+    """Flat Introspection result."""
+
     schema: str
     package: str
     is_package: bool
@@ -201,8 +206,9 @@ class IntrospectionRow:
     in_out: str
 
     def __post_init__(self):
-        self.is_package = True if self.is_package else False
-        self.defaulted = True if self.defaulted == 'Y' else False
+        """Introspection Appendix post-processing."""
+        self.is_package = bool(self.is_package)
+        self.defaulted = True if self.defaulted == 'Y' else False  # noqa: WPS502,E501
         self.overload = int(self.overload or 0)
         # Lowercase every string, so we won't think about it anymore
         # noinspection PyUnresolvedReferences
@@ -212,12 +218,15 @@ class IntrospectionRow:
                 setattr(self, attribute_name, attribute_value.lower())
 
     def override(self, data: IntrospectionAppendix):
+        """Override IntrospectionRow from DB with an IntrospectionAppendix."""
         for attr, value in data.new.items():
             setattr(self, attr, value)
 
 
 @dataclass
 class IntrospectionSchema:
+    """Introspection Schema type."""
+
     name: str
     no_package_name: str
     rows: MutableSequence[IntrospectionRow] = field(default_factory=list)
@@ -225,6 +234,8 @@ class IntrospectionSchema:
 
 @dataclass
 class IntrospectionDatabase:
+    """An introspection entity (DB) type."""
+
     name: str
     schemes: MutableSequence[IntrospectionSchema] = field(default_factory=list)
 
@@ -235,9 +246,39 @@ Introspection = MutableSequence[IntrospectionDatabase]
 
 # **************************Introspection Entry Point**************************
 class Inspect:
+    """Introspection Entry Point."""
+
     def __init__(self, conf: Configuration):
+        """Initialize Introspection Entry Point."""
         self.conf = conf
         self.result: Introspection = []
+
+    def introspection(self) -> Introspection:
+        """Introspect DB Schemas, in parallel."""
+        introspection = []
+        # Fork and process each schema in a separate thread
+        threads = []
+        for db in self.conf.databases:
+            introspection_db = IntrospectionDatabase(name=db.name)
+            introspection.append(introspection_db)
+
+            session_pool = db.connect()
+            for schema in db.schemes:
+                thread = Thread(
+                    target=self._introspect_one_schema,
+                    args=(session_pool, schema, introspection_db),
+                    daemon=True,
+                )
+                threads.append(thread)
+                thread.start()
+
+        # Block and Join
+        for thread in threads:  # noqa: WPS440
+            thread.join()
+
+        self.result = introspection
+
+        return introspection
 
     @staticmethod
     def _introspect_one_schema(
@@ -245,33 +286,34 @@ class Inspect:
         schema: Schema,
         introspection_db: IntrospectionDatabase,
     ):
+        """Introspect one DB Schema."""
         sql = []
         binds = {'schema': schema.name}
         included_routines_from_packages = (
-            f"    and ao.owner "
-            f"|| '.' "
-            f"|| ao.object_name "
-            f"|| '.' "
-            f"|| ap.procedure_name in ({schema.included_routines})"
+            '    and ao.owner '
+            + "|| '.' "
+            + '|| ao.object_name '
+            + "|| '.' "
+            + f'|| ap.procedure_name in ({schema.included_routines})'
         )
         included_routines_without_packages = (
             f'  and aa.object_name in ({schema.included_routines_no_pkg})'
         )
         excluded_packages = (
-            f"  and ao.object_name not in ({schema.excluded_packages})"
+            f'  and ao.object_name not in ({schema.excluded_packages})'
         )
         excluded_routines_from_packages = (
-            f"  and ao.owner "
-            f"|| '.' "
-            f"|| ao.object_name "
-            f"|| '.' "
-            f"|| ap.procedure_name not in ({schema.excluded_routines})"
+            '  and ao.owner '
+            + "|| '.' "
+            + '|| ao.object_name '
+            + "|| '.' "
+            + f'|| ap.procedure_name not in ({schema.excluded_routines})'
         )
         excluded_routines_without_packages = (
-            f"  and ao.owner "
-            f"|| '.' "
-            f"|| ap.object_name "
-            f"not in ({schema.excluded_routines_no_pkg})"
+            '  and ao.owner '
+            + "|| '.' "
+            + '|| ap.object_name '
+            + f'not in ({schema.excluded_routines_no_pkg})'
         )
 
         # If there are ANY Includes, then fetch only specified concrete objects
@@ -321,7 +363,6 @@ class Inspect:
         # Fetch all the rows at once
         connection: Connection = session_pool.acquire()
         with connection.cursor() as cursor:
-            cursor: Cursor = cursor
             cursor.execute(sql, binds)
             cursor.rowfactory = IntrospectionRow
             rows: MutableSequence[IntrospectionRow] = cursor.fetchall()
@@ -348,30 +389,4 @@ class Inspect:
         # A guarantee that DB's schemas will be placed in series
         with INTROSPECTION_DB_ADD_NEW_SCHEMA_LOCK:
             introspection_db.schemes.append(introspection_schema)
-
-    def introspection(self) -> Introspection:
-        introspection = []
-        # Fork and process each schema in a separate thread
-        threads = []
-        for db in self.conf.databases:
-            introspection_db = IntrospectionDatabase(name=db.name)
-            introspection.append(introspection_db)
-
-            session_pool = db.connect()
-            for schema in db.schemes:
-                thread = Thread(
-                    target=self._introspect_one_schema,
-                    args=(session_pool, schema, introspection_db),
-                    daemon=True,
-                )
-                threads.append(thread)
-                thread.start()
-
-        # Block and Join
-        for thread in threads:
-            thread.join()
-
-        self.result = introspection
-
-        return introspection
 # **************************Introspection Entry Point**************************

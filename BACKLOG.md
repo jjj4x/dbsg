@@ -4,18 +4,19 @@
 - [x] Introspection tuning: excludes, includes, appendix...
 - [ ] Better introspection (a DDL lexer via sys.all_source)
 - [ ] Check out Django's inspectdb implementation
+- [x] Typed input
 - [ ] Typed proc output
 - [ ] Typed func output
 - [ ] Typed output for cursors
 - [ ] Connection Pool handling (disconnection)
 - [ ] Acknowledge contributors
-- [X] Complex (data_level == 1) IN
-- [X] Complex OUT arguments
+- [x] Complex (data_level == 1) IN
+- [x] Complex OUT arguments
 - [ ] Generically Complex arguments
 - [ ] ref cursor handling
 - [ ] Complex IN/OUT arguments
 - [x] Better CLI interface
-- [ ] Style Guide Linter
+- [x] Style Guide Linter
 - [ ] pylint
 - [ ] mypy
 - [ ] documentation

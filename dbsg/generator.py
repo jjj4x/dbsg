@@ -1,3 +1,4 @@
+"""The generator CLI utility; can be extended."""
 from dbsg.lib.configuration import Setup
 from dbsg.lib.introspection import Inspect
 from dbsg.lib.intermediate_representation import Abstract
@@ -5,6 +6,7 @@ from dbsg.lib.plugin import Handler
 
 
 def main():
+    """Call default generator implementation."""
     configuration = Setup().configuration()
     introspection = Inspect(configuration).introspection()
     ir = Abstract(introspection).intermediate_representation()

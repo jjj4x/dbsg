@@ -1,33 +1,38 @@
+"""Generator configuration utilities."""
 from argparse import ArgumentParser
 from dataclasses import dataclass, field
-from logging.config import dictConfig
 from logging import Filter, getLogger
-from os import getenv, environ
+from logging.config import dictConfig
+from os import environ, getenv
 from pathlib import Path
-from re import compile
+from re import compile as re_compile
 from sys import exit
 from typing import (
     MutableMapping,
     MutableSequence,
-    Tuple,
     Optional,
-    Union,
     Pattern,
+    Tuple,
+    Union,
 )
 
 from cx_Oracle import SessionPool, makedsn
-from marshmallow import Schema as MarshmallowSchema, post_load
-from marshmallow.fields import Boolean, Dict, String, Integer, Nested, List
+from marshmallow import Schema, post_load
+from marshmallow.fields import Boolean, Dict, Integer, List, Nested, String
 from pkg_resources import get_distribution
-from yaml import SafeLoader, load, dump
+from yaml import SafeLoader, dump, load
 
 LOG = getLogger(__name__)
 VERSION = get_distribution('db-stubs-generator').version
+MarshmallowSchema = Schema
 
 
 # *****************************Additional Utilities*****************************
 class APPVersionLoggingFilter(Filter):
+    """Logging filter (for declarative configuration)."""
+
     def filter(self, record):
+        """Stick the version on the log record."""
         record.app_version = VERSION
         return True
 # *****************************Additional Utilities*****************************
@@ -38,12 +43,14 @@ ObjectIDANDSubprogramIDANDArgumentPosition = Tuple[int, int, int]
 ObjectIDANDSubprogramID = Tuple[int, int]
 IntrospectionAppendixKey = Union[
     ObjectIDANDSubprogramIDANDArgumentPosition,
-    ObjectIDANDSubprogramID
+    ObjectIDANDSubprogramID,
 ]
 
 
 @dataclass
 class IntrospectionAppendix:
+    """Make introspection appendix type."""
+
     comment: str
     object_id: int
     subprogram_id: int
@@ -52,6 +59,7 @@ class IntrospectionAppendix:
     new: MutableMapping = field(init=False)
 
     def __init__(self, **kwargs):
+        """Make introspection appendix dynamically."""
         self.comment = kwargs.pop('comment')
         self.object_id = kwargs.pop('object_id')
         self.subprogram_id = kwargs.pop('subprogram_id')
@@ -61,30 +69,35 @@ class IntrospectionAppendix:
 
 @dataclass
 class FQDN:
-    # TODO: docstring
+    """Make DB object (FQDN) type."""
 
     schema: str
     package: str  # maybe blank
     routine: str
 
     def __init__(self, *args):
+        """Uppercase all the members."""
         self.schema, self.package, self.routine = (a.upper() for a in args)
 
     def __str__(self):
+        """Make string representation, skipping missing members."""
         return f'{self.schema}.{self.package}.{self.routine}'.replace('..', '.')
 
     def __repr__(self):
+        """Maker repr of the string representation."""
         return repr(str(self))
 
 
 @dataclass
 class Schema:
+    """Make DB Schema type."""
+
     name: str
     no_package_name: str = field(default='')
 
     introspection_appendix: MutableMapping[
         IntrospectionAppendixKey,
-        IntrospectionAppendix
+        IntrospectionAppendix,
     ] = field(default_factory=dict)
 
     exclude_packages: MutableSequence[FQDN] = field(default_factory=list)
@@ -99,6 +112,7 @@ class Schema:
     excluded_routines_no_pkg: str = field(init=False)
 
     def __post_init__(self):
+        """Post-process Schema type."""
         self.name = self.name.upper()
 
         no_pkg = self.no_package_name or f'{self.name}_no_pkg'
@@ -122,7 +136,7 @@ class Schema:
         # noinspection PyTypeChecker
         for routine in self.normalize(self.name, self.include_routines):
             # noinspection PyArgumentList
-            fqdn = FQDN(*routine)
+            fqdn = FQDN(*routine)  # noqa: WPS441
             include_routines.append(fqdn)
             if fqdn.package:
                 included_routines.append(repr(fqdn))
@@ -143,7 +157,7 @@ class Schema:
         # noinspection PyTypeChecker
         for routine in self.normalize(self.name, self.exclude_routines):
             # noinspection PyArgumentList
-            fqdn = FQDN(*routine)
+            fqdn = FQDN(*routine)  # noqa: WPS441
             exclude_routines.append(fqdn)
             # It doesn't make sense to exclude anything, if we've included
             # ONLY concrete routines
@@ -179,7 +193,6 @@ class Schema:
             'schema.routine' -> ['schema', '', 'routine']
             'routine' -> ['schema', '', 'routine']
         """
-
         normalized = []
         for obj in objects or []:
             obj = obj.split('.')
@@ -195,8 +208,11 @@ class Schema:
 @dataclass
 class DSN:
     """
+    Make DSN type.
+
     https://cx-oracle.readthedocs.io/en/latest/module.html#cx_Oracle.makedsn
     """
+
     host: str
     port: int
     sid: Optional[str] = field(default=None)
@@ -206,8 +222,11 @@ class DSN:
 @dataclass
 class Pool:
     """
+    Make connection pool type.
+
     https://cx-oracle.readthedocs.io/en/latest/module.html#cx_Oracle.Connection
     """
+
     user: str
     password: str
     dsn: Union[DSN, object]  # cx_Oracle.dsn
@@ -218,6 +237,7 @@ class Pool:
     encoding: Optional[str] = field(default=None)
 
     def __post_init__(self):
+        """Make an actual cx_Oracle.dsn type."""
         self.dsn = makedsn(
             host=self.dsn.host,
             port=self.dsn.port,
@@ -228,6 +248,8 @@ class Pool:
 
 @dataclass
 class Database:
+    """Make DB type."""
+
     name: str
     pool: Pool
     schemes: MutableSequence[Schema]
@@ -236,9 +258,11 @@ class Database:
     session_pool: SessionPool = field(init=False, repr=False)
 
     def __post_init__(self):
+        """Make DB post-processing."""
         self.name = self.name.upper()
 
     def connect(self) -> SessionPool:
+        """Make connection pool."""
         self.session_pool = SessionPool(
             user=self.pool.user,
             password=self.pool.password,
@@ -251,12 +275,14 @@ class Database:
         )
         return self.session_pool
 
-    def disconnect(self):
-        ...  # TODO
+    def disconnect(self):  # TODO
+        """Close connection pool."""
 
 
 @dataclass
 class Configuration:
+    """Make configuration type."""
+
     databases: MutableSequence[Database]
     logging: dict
     plugins: MutableSequence[str]
@@ -267,6 +293,7 @@ class Configuration:
     nls_lang: Optional[str] = field(default='American_America.AL32UTF8')
 
     def __post_init__(self):
+        """Initialize Oracle Environs."""
         # Setup Process' ENVs
         if self.oracle_home:
             environ['ORACLE_HOME'] = self.oracle_home
@@ -289,6 +316,8 @@ class Configuration:
 #    config, not some dynamic dict()
 # 2. Providing default/fallback values. Again, that's a dataclasses task
 class DSNSchema(MarshmallowSchema):
+    """Serialize concrete DSN connections settings."""
+
     host = String()
     port = Integer()
     sid = String(required=False, allow_none=True)
@@ -296,6 +325,8 @@ class DSNSchema(MarshmallowSchema):
 
 
 class PoolSchema(MarshmallowSchema):
+    """Serialize connection pool settings."""
+
     user = String()
     password = String()
     dsn = Nested(DSNSchema, required=True)
@@ -306,12 +337,14 @@ class PoolSchema(MarshmallowSchema):
     encoding = String(required=False, allow_none=True)
 
     @post_load
-    def post_load(self, data):
+    def _post_load(self, data):
         data['dsn'] = DSN(**data['dsn'])
         return data
 
 
 class SchemesSchema(MarshmallowSchema):
+    """Serialize schema settings."""
+
     name = String(required=True)
     no_package_name = String(required=False, allow_none=True)
     introspection_appendix = List(Dict(), required=False, allow_none=True)
@@ -320,7 +353,7 @@ class SchemesSchema(MarshmallowSchema):
     include_routines = List(String(), required=False, allow_none=True)
 
     @post_load
-    def post_load(self, data):
+    def _post_load(self, data):
         introspection_appendix = {}
         for ia in data.get('introspection_appendix', []):
             if ia.get('position') is not None:
@@ -333,18 +366,22 @@ class SchemesSchema(MarshmallowSchema):
 
 
 class DatabaseSchema(MarshmallowSchema):
+    """Serialize database settings."""
+
     name = String(required=True)
     pool = Nested(PoolSchema, required=True)
     schemes = Nested(SchemesSchema, required=True, many=True)
 
     @post_load
-    def post_load(self, data):
+    def _post_load(self, data):
         data['pool'] = Pool(**data['pool'])
         data['schemes'] = [Schema(**s) for s in data['schemes']]
         return data
 
 
 class ConfigSchema(MarshmallowSchema):
+    """Serialize generator's config."""
+
     path = String(required=False)
     plugins = List(String(), required=True)
     abbreviation_files = List(String(), required=False)
@@ -356,7 +393,7 @@ class ConfigSchema(MarshmallowSchema):
     logging = Dict(required=True)
 
     @post_load
-    def post_load(self, data):
+    def _post_load(self, data):
         outcomes = {}
         words = []
         for file in data.pop('abbreviation_files', []):
@@ -377,7 +414,7 @@ class ConfigSchema(MarshmallowSchema):
                     if outcome is not None:
                         outcomes[word] = outcome.strip()
 
-        data['abbreviations'] = compile(rf'(\b|_)({"|".join(words)})(\b|_)')
+        data['abbreviations'] = re_compile(rf'(\b|_)({"|".join(words)})(\b|_)')
         data['outcomes'] = outcomes
         data['databases'] = [Database(**db) for db in data['databases']]
         data['path'] = Path(data['path'])
@@ -415,10 +452,17 @@ CommandLineInterface.add_argument(
 
 # **************************Configuration Entry Point**************************
 class Setup:
+    """Generator's configuration factory."""
+
     VALIDATOR = ConfigSchema()
     CLI: ArgumentParser = CommandLineInterface
 
     def __init__(self):
+        """
+        Initialize generator's config.
+
+        Use .configuration() for actual handling.
+        """
         cli = self.CLI.parse_args().__dict__ or {}
         dbsg_conf = cli.pop('config', None)
 
@@ -428,7 +472,33 @@ class Setup:
         # CLI path takes precedence over ENV path
         self.path = dbsg_conf or getenv('DBSG_CONF', 'dbsg_config.yml')
 
-    def merge_cli_with_file(self) -> MutableMapping:
+    @classmethod
+    def validate_and_cast(cls, data, path) -> Configuration:
+        """Validate and merge (CLI + file) config."""
+        valid, errors = cls.VALIDATOR.load(data)
+        if errors:
+            print(
+                f'The "{path}" configuration is invalid.',
+                'The following fields are missing/invalid:',
+                dump(
+                    errors,
+                    default_flow_style=False,
+                    indent=4,
+                    explicit_start=True,
+                    explicit_end=True,
+                ),
+                f'After merging with CLI arguments, your config was: {data}',
+                sep='\n',
+            )
+            exit(1)
+        return valid['config']
+
+    def configuration(self) -> Configuration:
+        """Make an entry point for Generator's config."""
+        raw = self._merge_cli_with_file()
+        return self._activate_logging(self.validate_and_cast(raw, self.path))
+
+    def _merge_cli_with_file(self) -> MutableMapping:
         with open(self.path, 'r', encoding='utf8') as fh:
             data = load(fh, Loader=SafeLoader)
 
@@ -436,46 +506,22 @@ class Setup:
 
         return data
 
-    @classmethod
-    def validate_and_cast(cls, data, path) -> Configuration:
-        valid, errors = cls.VALIDATOR.load(data)
-        if errors:
-            print(
-                f"The '{path}' configuration is invalid.",
-                'The following fields are missing/invalid:',
-                dump(
-                    errors,
-                    default_flow_style=False,
-                    indent=4,
-                    explicit_start=True,
-                    explicit_end=True
-                ),
-                f'After merging with CLI arguments, your config was: {data}',
-                sep='\n'
-            )
-            exit(1)
-        return valid['config']
-
     @staticmethod
-    def activate_logging(config: Configuration) -> Configuration:
+    def _activate_logging(config: Configuration) -> Configuration:
         log = config.logging
 
         dictConfig(log)
 
         root_level = log['root']['level']
         root_handlers = ', '.join(log['root']['handlers'])
-        non_root_loggers = log['loggers'].items()
-        non_root_loggers = (f'{n} [{p["level"]}]' for n, p in non_root_loggers)
+        non_root_loggers = []
+        for name, settings in log['loggers'].items():
+            non_root_loggers.append(f'{name} [{settings["level"]}]')
         non_root_loggers = ', '.join(non_root_loggers)
 
         LOG.debug(f'The config was loaded: {log}')
-        LOG.info(f"The Root Logger [{root_level}] handlers: {root_handlers}")
-        LOG.info(f"Non Root Loggers: {non_root_loggers}")
+        LOG.info(f'The Root Logger [{root_level}] handlers: {root_handlers}')
+        LOG.info(f'Non Root Loggers: {non_root_loggers}')
 
         return config
-
-    def configuration(self) -> Configuration:
-        raw = self.merge_cli_with_file()
-        valid = self.activate_logging(self.validate_and_cast(raw, self.path))
-        return valid
 # **************************Configuration Entry Point**************************
