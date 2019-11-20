@@ -334,9 +334,8 @@ class PoolSchema(MarshmallowSchema):
     max = Integer(required=False)
     encoding = String(required=False, allow_none=True)
 
-    @staticmethod
     @post_load
-    def _post_load(data):
+    def _post_load(self, data):
         data['dsn'] = DSN(**data['dsn'])
         return data
 
@@ -351,9 +350,8 @@ class SchemesSchema(MarshmallowSchema):
     exclude_routines = List(String(), required=False, allow_none=True)
     include_routines = List(String(), required=False, allow_none=True)
 
-    @staticmethod
     @post_load
-    def _post_load(data):
+    def _post_load(self, data):
         introspection_appendix = {}
         for ia in data.get('introspection_appendix', []):
             if ia.get('position') is not None:
@@ -372,9 +370,8 @@ class DatabaseSchema(MarshmallowSchema):
     pool = Nested(PoolSchema, required=True)
     schemes = Nested(SchemesSchema, required=True, many=True)
 
-    @staticmethod
     @post_load
-    def _post_load(data):
+    def _post_load(self, data):
         data['pool'] = Pool(**data['pool'])
         data['schemes'] = [Schema(**s) for s in data['schemes']]
         return data
@@ -393,9 +390,8 @@ class ConfigSchema(MarshmallowSchema):
 
     logging = Dict(required=True)
 
-    @staticmethod
     @post_load
-    def _post_load(data):
+    def _post_load(self, data):
         outcomes = {}
         words = []
         for file in data.pop('abbreviation_files', []):
