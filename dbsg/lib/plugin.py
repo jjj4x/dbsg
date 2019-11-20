@@ -22,9 +22,9 @@ class PluginMetaABC(ABCMeta):
     """
 
     # N804  first argument of a classmethod should be named 'cls'
-    def __new__(mcs, name, bases, attrs):  # noqa: N804
+    def __new__(mcs, name, bases, namespace, **kwargs):  # noqa: N804
         """Register all the unregistered plugins."""
-        new = super().__new__(PluginMetaABC, name, bases, attrs)
+        new = super().__new__(PluginMetaABC, name, bases, namespace, **kwargs)
 
         if not bases:
             return new

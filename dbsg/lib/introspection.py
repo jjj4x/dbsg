@@ -61,7 +61,7 @@ from typing import MutableSequence, Optional
 from threading import Lock, Thread
 from logging import getLogger
 
-from cx_Oracle import Connection, SessionPool
+from cx_Oracle import Connection, SessionPool  # pylint: disable=E0611
 
 from dbsg.lib.configuration import Configuration, Schema, IntrospectionAppendix
 
@@ -212,6 +212,7 @@ class IntrospectionRow:
         self.overload = int(self.overload or 0)
         # Lowercase every string, so we won't think about it anymore
         # noinspection PyUnresolvedReferences
+        # pylint: disable=E1101
         for attribute_name in self.__dataclass_fields__:
             attribute_value = getattr(self, attribute_name, None)
             if isinstance(attribute_value, str):

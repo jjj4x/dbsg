@@ -1,7 +1,13 @@
+# 2019.8.0
+## Static Analysis and Refactoring
+- Another command in tox.ini
+- pylint
+- Corresponding refactoring
+
 # 2019.7.0
 ## Style Guide and Refactoring
 - tox.ini
-- wemake-python-styleguide
+- wemake-python-styleguide (flake8 with plugins)
 - Corresponding refactoring
 - setup.cfg refactoring
 

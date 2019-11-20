@@ -6,7 +6,6 @@ from logging.config import dictConfig
 from os import environ, getenv
 from pathlib import Path
 from re import compile as re_compile
-from sys import exit
 from typing import (
     MutableMapping,
     MutableSequence,
@@ -16,15 +15,14 @@ from typing import (
     Union,
 )
 
-from cx_Oracle import SessionPool, makedsn
-from marshmallow import Schema, post_load
+from cx_Oracle import SessionPool, makedsn  # pylint: disable=E0611
+from marshmallow import Schema as MarshmallowSchema, post_load
 from marshmallow.fields import Boolean, Dict, Integer, List, Nested, String
 from pkg_resources import get_distribution
 from yaml import SafeLoader, dump, load
 
 LOG = getLogger(__name__)
 VERSION = get_distribution('db-stubs-generator').version
-MarshmallowSchema = Schema
 
 
 # *****************************Additional Utilities*****************************
@@ -336,8 +334,9 @@ class PoolSchema(MarshmallowSchema):
     max = Integer(required=False)
     encoding = String(required=False, allow_none=True)
 
+    @staticmethod
     @post_load
-    def _post_load(self, data):
+    def _post_load(data):
         data['dsn'] = DSN(**data['dsn'])
         return data
 
@@ -352,8 +351,9 @@ class SchemesSchema(MarshmallowSchema):
     exclude_routines = List(String(), required=False, allow_none=True)
     include_routines = List(String(), required=False, allow_none=True)
 
+    @staticmethod
     @post_load
-    def _post_load(self, data):
+    def _post_load(data):
         introspection_appendix = {}
         for ia in data.get('introspection_appendix', []):
             if ia.get('position') is not None:
@@ -372,8 +372,9 @@ class DatabaseSchema(MarshmallowSchema):
     pool = Nested(PoolSchema, required=True)
     schemes = Nested(SchemesSchema, required=True, many=True)
 
+    @staticmethod
     @post_load
-    def _post_load(self, data):
+    def _post_load(data):
         data['pool'] = Pool(**data['pool'])
         data['schemes'] = [Schema(**s) for s in data['schemes']]
         return data
@@ -392,8 +393,9 @@ class ConfigSchema(MarshmallowSchema):
 
     logging = Dict(required=True)
 
+    @staticmethod
     @post_load
-    def _post_load(self, data):
+    def _post_load(data):
         outcomes = {}
         words = []
         for file in data.pop('abbreviation_files', []):

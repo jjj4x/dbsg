@@ -16,10 +16,10 @@
 - [ ] ref cursor handling
 - [ ] Complex IN/OUT arguments
 - [x] Better CLI interface
-- [x] Style Guide Linter
-- [ ] pylint
-- [ ] mypy
-- [ ] documentation
+- [x] Style Guide Linter with flake8
+- [x] Satic Analysis with pylint
+- [ ] Type Analysis with mypy
+- [ ] Documentation with sphinx
 - [ ] tests
 - [ ] CI
 - [ ] PyPI publishing
