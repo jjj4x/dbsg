@@ -1,12 +1,19 @@
+# 2019.9.0
+## Typing Analysis with mypy and Refactoring
+- Another command in setup_tox.ini
+- mypy
+- Corresponding refactoring
+- Dropped some ignores for flake8, pylint, and mypy
+
 # 2019.8.0
 ## Static Analysis and Refactoring
-- Another command in tox.ini
+- Another command in setup_tox.ini
 - pylint
 - Corresponding refactoring
 
 # 2019.7.0
 ## Style Guide and Refactoring
-- tox.ini
+- setup_tox.ini
 - wemake-python-styleguide (flake8 with plugins)
 - Corresponding refactoring
 - setup.cfg refactoring

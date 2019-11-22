@@ -1,4 +1,5 @@
 """Intermediate Representation types and utilities."""
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import MutableSequence, Union, Optional
 
@@ -54,7 +55,7 @@ class SimpleArgument:  # Flat
             i for i in (
                 self.custom_type_schema,
                 self.custom_type_package,
-                self.custom_type
+                self.custom_type,
             )
             if i
         )
@@ -72,7 +73,21 @@ class ComplexArgument(SimpleArgument):  # with Nested Arguments
         return self.data_level + 1
 
     @property
-    def last_argument(self) -> COMPLEX_TYPES:
+    def complex_child(self) -> ComplexArgument:
+        """Last argument shortcut."""
+        if isinstance(self.arguments[-1], ComplexArgument):
+            return self.arguments[-1]
+        raise TypeError('There is no complex children.')
+
+    @property
+    def simple_child(self) -> SimpleArgument:
+        """Last simple argument shortcut."""
+        if isinstance(self.arguments[-1], SimpleArgument):
+            return self.arguments[-1]
+        raise TypeError('There is no simple children.')
+
+    @property
+    def last_child(self) -> Argument:
         """Last argument shortcut."""
         return self.arguments[-1]
 
@@ -84,7 +99,7 @@ class ComplexArgument(SimpleArgument):  # with Nested Arguments
         # Child that should be lifted into desired Data Level
         if argument.data_level > self.direct_child_data_level:
             # In this context, last_argument is always a ComplexArgument
-            self.last_argument.dispatch_argument(argument)
+            self.complex_child.dispatch_argument(argument)
         # Direct Child that should be placed at the Top
         else:
             self.arguments.append(argument)
@@ -103,7 +118,7 @@ class Routine:
     arguments: MutableSequence[Argument] = field(default_factory=list)
 
     @classmethod
-    def from_row(cls, row: IntrospectionRow):
+    def from_row(cls, row: IntrospectionRow) -> Routine:
         """Make IR routine type from IntrospectionRow factory."""
         routine = cls(
             name=row.routine,
@@ -115,12 +130,26 @@ class Routine:
         routine.fqdn = FQDN(  # noqa: WPS601
             row.schema,
             row.package if row.is_package else '',
-            row.routine
+            row.routine,
         )
         return routine
 
     @property
-    def last_argument(self) -> Argument:
+    def complex_child(self) -> ComplexArgument:
+        """Last complex argument shortcut."""
+        if isinstance(self.arguments[-1], ComplexArgument):
+            return self.arguments[-1]
+        raise TypeError('There is no complex children.')
+
+    @property
+    def simple_child(self) -> SimpleArgument:
+        """Last simple argument shortcut."""
+        if isinstance(self.arguments[-1], SimpleArgument):
+            return self.arguments[-1]
+        raise TypeError('There is no simple children.')
+
+    @property
+    def last_child(self) -> Argument:
         """Last argument shortcut."""
         return self.arguments[-1]
 
@@ -132,7 +161,7 @@ class Routine:
         # Data Level > 0 is a guarantee that the Arg should be nested
         else:
             # In this context, last_argument is always a ComplexArgument
-            self.last_argument.dispatch_argument(argument)
+            self.complex_child.dispatch_argument(argument)
 
     @property
     def sorted_arguments(self) -> MutableSequence[Argument]:
@@ -227,7 +256,9 @@ class Abstract:
                         routine = Routine.from_row(row)
                         database.dispatch_routine(row, routine)
 
-                    routine.dispatch_argument(argument)
+                    # An excessive check for mypy validation
+                    if routine is not None:
+                        routine.dispatch_argument(argument)
 
                     oid = row.object_id
                     sid = row.subprogram_id

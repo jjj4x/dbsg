@@ -18,7 +18,7 @@
 - [x] Better CLI interface
 - [x] Style Guide Linter with flake8
 - [x] Satic Analysis with pylint
-- [ ] Type Analysis with mypy
+- [x] Type Analysis with mypy
 - [ ] Documentation with sphinx
 - [ ] tests
 - [ ] CI

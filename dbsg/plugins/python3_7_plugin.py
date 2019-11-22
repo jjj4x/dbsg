@@ -2,11 +2,15 @@
 from keyword import iskeyword
 from logging import getLogger
 from re import compile as re_compile
-from typing import MutableSequence, Match
+from typing import List, Match, MutableSequence, Set
 
 from dbsg.lib.configuration import Configuration
-from dbsg.lib.introspection import COMPLEX_TYPES
-from dbsg.lib.intermediate_representation import Argument, Routine, Package
+from dbsg.lib.intermediate_representation import (
+    Argument,
+    ComplexArgument,
+    Routine,
+    Package,
+)
 from dbsg.lib.plugin import PluginABC
 
 LOG = getLogger(__name__)
@@ -158,9 +162,9 @@ class {package_name}(generic.Stub):
         self.imports = {'logging'}
 
         # Will be placed into the top docstring, if any
-        self.errors = []
+        self.errors: List[str] = []
 
-        self.definitions = []
+        self.definitions: List[str] = []
 
         self.methods: MutableSequence[PyMethod] = []
 
@@ -226,9 +230,9 @@ class PyMethod:
         self.routine = routine
 
         # The info should be dispatched into Python Module (DB Package) Level
-        self.imports = set()
-        self.errors = []
-        self.definitions = []
+        self.imports: Set[str] = set()
+        self.errors: List[str] = []
+        self.definitions: List[str] = []
 
         # The name should be prepared, considering...
         name = routine.name
@@ -255,7 +259,7 @@ class PyMethod:
                 '        {cx_func_out},',
                 '        keywordParameters=inp,',
                 '    )',
-                '    {cx_func_out_end}'
+                '    {cx_func_out_end}',
             ]
         else:
             self.py_body = [  # Within with
@@ -272,10 +276,10 @@ class PyMethod:
             ]
 
         self.cx_call_name = routine.fqdn
-        self.cx_in = []
-        self.cx_out = []
+        self.cx_in: List[str] = []
+        self.cx_out: List[str] = []
         self.cx_func_out = ''
-        self.cx_func_out_end = []
+        self.cx_func_out_end: List[str] = []
         self.cx_proc_out_end = ''
 
         # The calls have overhead, but have no side-effects
@@ -287,20 +291,20 @@ class PyMethod:
         __ = indent + '    '
         name = kwargs['name']
         py_type = kwargs['py_type']
-        if arg.data_type in COMPLEX_TYPES:
+        if isinstance(arg, ComplexArgument):
             self.imports.add('typing')
             arg_ct = arg.custom_type_fqdn.upper()
 
             if arg.data_type in {'varray', 'table', 'pl/sql table'}:
                 if (
                     arg.arguments
-                    and arg.last_argument.data_type in PY_SIMPLE_TYPES
+                    and not isinstance(arg.last_child, ComplexArgument)
                 ):
-                    nested_type = PY_SIMPLE_TYPES[arg.last_argument.data_type]
+                    nested_type = PY_SIMPLE_TYPES[arg.last_child.data_type]
                     self.cx_in.append(f'{_}inp["{name}"] = {name}')
                 else:
                     nested_type = 'typing.Mapping'
-                    nested_arg_ct = arg.last_argument.custom_type_fqdn.upper()
+                    nested_arg_ct = arg.complex_child.custom_type_fqdn.upper()
                     self.cx_in.append(f'{_}inp["{name}"] = cursor.var(')
                     self.cx_in.append(f'{__}cx_Oracle.OBJECT,')
                     self.cx_in.append(f'{__}typename="{arg_ct}",')
@@ -311,7 +315,7 @@ class PyMethod:
                     self.cx_in.append(f'{_}).type')
                     self.cx_in.append(f'{_}for el in {name}:')
                     self.cx_in.append(f'{__}nested = nested_type.newobject()')
-                    for nested_of_nested in arg.last_argument.arguments:
+                    for nested_of_nested in arg.complex_child.arguments:
                         n = nested_of_nested.name
                         self.cx_in.append(f'{__}nested.{n.upper()} = el["{n}"]')
                     self.cx_in.append(f'{__}inp["{name}"].append(nested)')
@@ -326,7 +330,7 @@ class PyMethod:
                 for nested in arg.arguments:
                     n = nested.name
                     self.cx_in.append(
-                        f'{_}inp["{name}"].{n.upper()} = {name}["{n}"]'
+                        f'{_}inp["{name}"].{n.upper()} = {name}["{n}"]',
                     )
 
                 py_type = f'typing.Mapping'
@@ -378,7 +382,7 @@ class PyMethod:
             self.cx_func_out = cx_type
             self.cx_func_out_end.append('out = out.fetchall()')
 
-        elif arg.data_type in COMPLEX_TYPES:
+        elif isinstance(arg, ComplexArgument):
             self.cx_func_out = arg.name
             arg_ct = arg.custom_type_fqdn.upper()
 
@@ -409,29 +413,29 @@ class PyMethod:
                 # It seems that table-like args cannot have more that 1 nested
                 # argument
 
-                if arg.last_argument.data_type == 'object':
+                if arg.last_child.data_type == 'object':
                     self.cx_func_out_end.append('out = [')
                     self.cx_func_out_end.append('    {')
                     self.cx_func_out_end.append(
-                        '        attr.name.lower(): getattr(obj, attr.name)'
+                        '        attr.name.lower(): getattr(obj, attr.name)',
                     )
                     self.cx_func_out_end.append(
-                        '        for attr in obj.type.attributes'
+                        '        for attr in obj.type.attributes',
                     )
                     self.cx_func_out_end.append('    }')
                     self.cx_func_out_end.append('    for obj in out.aslist()')
                     self.cx_func_out_end.append(']')
-                elif arg.last_argument.data_type in {'record', 'pl/sql record'}:
+                elif arg.last_child.data_type in {'record', 'pl/sql record'}:
                     self.cx_func_out_end.append(
                         '# FIXME: table of records is probably not supported '
-                        + 'on library level!'
+                        + 'on library level!',
                     )
                     self.cx_func_out_end.append('out = [')
                     self.cx_func_out_end.append('    {')
-                    for nested_of_nested in arg.last_argument.arguments:
+                    for nested_of_nested in arg.complex_child.arguments:
                         n = nested_of_nested.name
                         self.cx_func_out_end.append(
-                            f'        "{n}": rec.{n.upper()},'
+                            f'        "{n}": rec.{n.upper()},',
                         )
                     self.cx_func_out_end.append('    }')
                     self.cx_func_out_end.append('    for rec in out or []')
@@ -459,7 +463,7 @@ class PyMethod:
             self.cx_out.append(f'inp["{name}"] = cursor.var(cx_Oracle.CURSOR)')
             get_val = f'    out["{name}"] = inp["{name}"].getvalue().fetchall()'
 
-        elif arg.data_type in COMPLEX_TYPES:
+        elif isinstance(arg, ComplexArgument):
             arg_ct = arg.custom_type_fqdn.upper()
 
             if arg.data_type in {'object', 'record', 'pl/sql record'}:
@@ -471,8 +475,7 @@ class PyMethod:
             if arg.data_type in {'varray', 'table', 'pl/sql table'}:
                 if (
                     arg.arguments
-                    and arg.last_argument.data_type
-                    in PY_SIMPLE_TYPES
+                    and not isinstance(arg, ComplexArgument)
                 ):
                     self.cx_in.append(f'inp["{name}"] = {name}')
                 else:

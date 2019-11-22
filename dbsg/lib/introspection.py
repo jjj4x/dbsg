@@ -207,8 +207,8 @@ class IntrospectionRow:
 
     def __post_init__(self):
         """Introspection Appendix post-processing."""
+        self.defaulted = self.defaulted == 'Y'
         self.is_package = bool(self.is_package)
-        self.defaulted = True if self.defaulted == 'Y' else False  # noqa: WPS502,E501
         self.overload = int(self.overload or 0)
         # Lowercase every string, so we won't think about it anymore
         # noinspection PyUnresolvedReferences
@@ -288,7 +288,7 @@ class Inspect:
         introspection_db: IntrospectionDatabase,
     ):
         """Introspect one DB Schema."""
-        sql = []
+        sql_statements = []
         binds = {'schema': schema.name}
         included_routines_from_packages = (
             '    and ao.owner '
@@ -320,45 +320,45 @@ class Inspect:
         # If there are ANY Includes, then fetch only specified concrete objects
         if schema.include_routines:
             if schema.included_packages and not schema.included_routines_no_pkg:
-                sql.append(INTROSPECTION_WITH_PACKAGE_SQL)
-                sql.append(included_routines_from_packages)
+                sql_statements.append(INTROSPECTION_WITH_PACKAGE_SQL)
+                sql_statements.append(included_routines_from_packages)
 
             if schema.included_packages and schema.included_routines_no_pkg:
-                sql.append(INTROSPECTION_WITH_PACKAGE_SQL)
-                sql.append(included_routines_from_packages)
-                sql.append('union all')
-                sql.append(INTROSPECTION_WITHOUT_PACKAGE_SQL)
-                sql.append(included_routines_without_packages)
+                sql_statements.append(INTROSPECTION_WITH_PACKAGE_SQL)
+                sql_statements.append(included_routines_from_packages)
+                sql_statements.append('union all')
+                sql_statements.append(INTROSPECTION_WITHOUT_PACKAGE_SQL)
+                sql_statements.append(included_routines_without_packages)
 
                 binds['no_package_name'] = schema.no_package_name
 
             if not schema.included_packages and schema.included_routines_no_pkg:
-                sql.append(INTROSPECTION_WITHOUT_PACKAGE_SQL)
-                sql.append(included_routines_without_packages)
+                sql_statements.append(INTROSPECTION_WITHOUT_PACKAGE_SQL)
+                sql_statements.append(included_routines_without_packages)
 
                 binds['no_package_name'] = schema.no_package_name
 
         # Else, fetch everything excluding "exclude"
         else:
-            sql.append(INTROSPECTION_WITH_PACKAGE_SQL)
+            sql_statements.append(INTROSPECTION_WITH_PACKAGE_SQL)
 
             if schema.exclude_packages:
-                sql.append(excluded_packages)
+                sql_statements.append(excluded_packages)
 
             if schema.exclude_routines:
-                sql.append(excluded_routines_from_packages)
+                sql_statements.append(excluded_routines_from_packages)
 
-            sql.append('union all')
-            sql.append(INTROSPECTION_WITHOUT_PACKAGE_SQL)
+            sql_statements.append('union all')
+            sql_statements.append(INTROSPECTION_WITHOUT_PACKAGE_SQL)
 
             if schema.excluded_routines_no_pkg:
-                sql.append(excluded_routines_without_packages)
+                sql_statements.append(excluded_routines_without_packages)
 
             binds['no_package_name'] = schema.no_package_name
 
-        sql.append(INTROSPECTION_ORDER_CLAUSE)
+        sql_statements.append(INTROSPECTION_ORDER_CLAUSE)
 
-        sql = '\n'.join(sql)
+        sql = '\n'.join(sql_statements)
         LOG.info(repr(f'-- Use print() to format the msg\n-- {binds}\n{sql};'))
 
         # Fetch all the rows at once

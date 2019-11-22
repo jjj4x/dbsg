@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from logging import Filter, getLogger
 from logging.config import dictConfig
 from os import environ, getenv
+from sys import exit as sys_exit
 from pathlib import Path
 from re import compile as re_compile
 from typing import (
+    List,
     MutableMapping,
     MutableSequence,
     Optional,
@@ -16,13 +18,15 @@ from typing import (
 )
 
 from cx_Oracle import SessionPool, makedsn  # pylint: disable=E0611
-from marshmallow import Schema as MarshmallowSchema, post_load
-from marshmallow.fields import Boolean, Dict, Integer, List, Nested, String
+from marshmallow import Schema as MarshmallowSchema, fields, post_load
 from pkg_resources import get_distribution
 from yaml import SafeLoader, dump, load
 
 LOG = getLogger(__name__)
 VERSION = get_distribution('db-stubs-generator').version
+
+# Method could be a function (no-self-use) [@staticmethod brakes marshmallow]
+# pylint: disable=R0201
 
 
 # *****************************Additional Utilities*****************************
@@ -179,10 +183,7 @@ class Schema:
         self.excluded_routines_no_pkg = ', '.join(excluded_routines_no_pkg)
 
     @staticmethod
-    def normalize(
-        name: str,
-        objects: MutableSequence[str]
-    ) -> MutableSequence[MutableSequence[str]]:
+    def normalize(name: str, objects: List[str]) -> List[List[str]]:
         """Normalize DB objects to their Pre-FQDN form.
 
         For example:
@@ -192,8 +193,8 @@ class Schema:
             'routine' -> ['schema', '', 'routine']
         """
         normalized = []
-        for obj in objects or []:
-            obj = obj.split('.')
+        for o in objects or []:
+            obj = o.split('.')
             if obj[0] != name or len(obj) == 1:
                 obj.insert(0, name)
             if len(obj) == 2:
@@ -286,7 +287,7 @@ class Configuration:
     plugins: MutableSequence[str]
     abbreviations: Pattern[str]
     outcomes: MutableMapping[str, str]
-    path: Path = field(default='stubs')
+    path: Path = field(default=Path('stubs'))
     oracle_home: Optional[str] = field(default=None)
     nls_lang: Optional[str] = field(default='American_America.AL32UTF8')
 
@@ -316,23 +317,23 @@ class Configuration:
 class DSNSchema(MarshmallowSchema):
     """Serialize concrete DSN connections settings."""
 
-    host = String()
-    port = Integer()
-    sid = String(required=False, allow_none=True)
-    service_name = String(required=False, allow_none=True)
+    host = fields.String()
+    port = fields.Integer()
+    sid = fields.String(required=False, allow_none=True)
+    service_name = fields.String(required=False, allow_none=True)
 
 
 class PoolSchema(MarshmallowSchema):
     """Serialize connection pool settings."""
 
-    user = String()
-    password = String()
-    dsn = Nested(DSNSchema, required=True)
-    threaded = Boolean(required=False)
-    homogeneous = Boolean(required=False)
-    min = Integer(required=False)
-    max = Integer(required=False)
-    encoding = String(required=False, allow_none=True)
+    user = fields.String()
+    password = fields.String()
+    dsn = fields.Nested(DSNSchema, required=True)
+    threaded = fields.Boolean(required=False)
+    homogeneous = fields.Boolean(required=False)
+    min = fields.Integer(required=False)
+    max = fields.Integer(required=False)
+    encoding = fields.String(required=False, allow_none=True)
 
     @post_load
     def _post_load(self, data):
@@ -343,12 +344,28 @@ class PoolSchema(MarshmallowSchema):
 class SchemesSchema(MarshmallowSchema):
     """Serialize schema settings."""
 
-    name = String(required=True)
-    no_package_name = String(required=False, allow_none=True)
-    introspection_appendix = List(Dict(), required=False, allow_none=True)
-    exclude_packages = List(String(), required=False, allow_none=True)
-    exclude_routines = List(String(), required=False, allow_none=True)
-    include_routines = List(String(), required=False, allow_none=True)
+    name = fields.String(required=True)
+    no_package_name = fields.String(required=False, allow_none=True)
+    introspection_appendix = fields.List(
+        fields.Dict(),
+        required=False,
+        allow_none=True,
+    )
+    exclude_packages = fields.List(
+        fields.String(),
+        required=False,
+        allow_none=True,
+    )
+    exclude_routines = fields.List(
+        fields.String(),
+        required=False,
+        allow_none=True,
+    )
+    include_routines = fields.List(
+        fields.String(),
+        required=False,
+        allow_none=True,
+    )
 
     @post_load
     def _post_load(self, data):
@@ -366,9 +383,9 @@ class SchemesSchema(MarshmallowSchema):
 class DatabaseSchema(MarshmallowSchema):
     """Serialize database settings."""
 
-    name = String(required=True)
-    pool = Nested(PoolSchema, required=True)
-    schemes = Nested(SchemesSchema, required=True, many=True)
+    name = fields.String(required=True)
+    pool = fields.Nested(PoolSchema, required=True)
+    schemes = fields.Nested(SchemesSchema, required=True, many=True)
 
     @post_load
     def _post_load(self, data):
@@ -380,15 +397,15 @@ class DatabaseSchema(MarshmallowSchema):
 class ConfigSchema(MarshmallowSchema):
     """Serialize generator's config."""
 
-    path = String(required=False)
-    plugins = List(String(), required=True)
-    abbreviation_files = List(String(), required=False)
+    path = fields.String(required=False)
+    plugins = fields.List(fields.String(), required=True)
+    abbreviation_files = fields.List(fields.String(), required=False)
 
-    oracle_home = String(required=False, allow_none=True)
-    nls_lang = String(required=False, allow_none=True)
-    databases = Nested(DatabaseSchema, required=True, many=True)
+    oracle_home = fields.String(required=False, allow_none=True)
+    nls_lang = fields.String(required=False, allow_none=True)
+    databases = fields.Nested(DatabaseSchema, required=True, many=True)
 
-    logging = Dict(required=True)
+    logging = fields.Dict(required=True)
 
     @post_load
     def _post_load(self, data):
@@ -475,7 +492,8 @@ class Setup:
         """Validate and merge (CLI + file) config."""
         valid, errors = cls.VALIDATOR.load(data)
         if errors:
-            print(
+            # Conf has to print a message, while logging isn't set up
+            print(  # noqa: T001
                 f'The "{path}" configuration is invalid.',
                 'The following fields are missing/invalid:',
                 dump(
@@ -488,7 +506,7 @@ class Setup:
                 f'After merging with CLI arguments, your config was: {data}',
                 sep='\n',
             )
-            exit(1)
+            sys_exit(1)
         return valid['config']
 
     def configuration(self) -> Configuration:
@@ -512,10 +530,10 @@ class Setup:
 
         root_level = log['root']['level']
         root_handlers = ', '.join(log['root']['handlers'])
-        non_root_loggers = []
+        loggers = []
         for name, settings in log['loggers'].items():
-            non_root_loggers.append(f'{name} [{settings["level"]}]')
-        non_root_loggers = ', '.join(non_root_loggers)
+            loggers.append(f'{name} [{settings["level"]}]')
+        non_root_loggers = ', '.join(loggers)
 
         LOG.debug(f'The config was loaded: {log}')
         LOG.info(f'The Root Logger [{root_level}] handlers: {root_handlers}')

@@ -1,8 +1,9 @@
 """Plugin utilities."""
+from __future__ import annotations
 from abc import ABCMeta, abstractmethod
 from logging import getLogger
 from importlib import import_module
-from typing import Iterator
+from typing import Iterator, MutableMapping
 
 from dbsg.lib.configuration import Configuration
 from dbsg.lib.introspection import Introspection
@@ -11,7 +12,7 @@ from dbsg.lib.intermediate_representation import IR
 LOG = getLogger(__name__)
 
 # WPS407 Found mutable module constant. It makes sense here.
-REGISTRY = {}  # noqa: WPS407
+REGISTRY: MutableMapping[str, PluginMetaABC] = {}  # noqa: WPS407
 
 
 class PluginMetaABC(ABCMeta):
@@ -33,7 +34,7 @@ class PluginMetaABC(ABCMeta):
             LOG.info(
                 f'Skipping {name} ({new.name()}) registration. '
                 + 'A plugin with the same name is already in '
-                + f'REGISTRY: {REGISTRY[new.name()]}.'
+                + f'REGISTRY: {REGISTRY[new.name()]}.',
             )
         else:
             REGISTRY[new.name()] = new
@@ -86,7 +87,7 @@ class Handler:
                 LOG.error(
                     f'The "{name}" plugin is not registered. Use '
                     + f'{__name__}.PluginABC and your plugin will be '
-                    + 'registered automatically, or write a custom handler.'
+                    + 'registered automatically, or write a custom handler.',
                 )
                 continue
 
