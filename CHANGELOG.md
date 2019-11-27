@@ -1,3 +1,10 @@
+# 2019.10.0
+## Started Documentation and Readme
+- Another command in setup_tox.ini
+- sphinx
+- Some refactoring
+- Documentation as Code infrastructure
+
 # 2019.9.0
 ## Typing Analysis with mypy and Refactoring
 - Another command in setup_tox.ini

@@ -1,59 +1,64 @@
 """
 Introspection types and utilities.
 
-NOTES:
+.. note::
+
     We might stumble upon a routine which has an OUT argument with
     PL/SQL RECORD type, but HAS NO custom_type.
 
-    Also, we can't declare cursor.var(cx_Oracle.OBJECT, typename=None), because
+    But we can't declare a cursor.var(cx_Oracle.OBJECT, typename=None), because
     typename cannot be None.
 
-    There's a dynamic solution: the PL/SQL RECORD will have its nested
-    "arguments" which we can aggregate into a string like:
-    'BILL_PERIOD,BILL_SYSTEM,BILL_USER'
+    There's a dynamic solution:
 
-    After that wee can try to find some candidate tables:
-    with cols as (
-        select
-            t.owner,
-            t.table_name,
-            count(*) column_count,
-            listagg(t.column_name, ',')
-            within group (order by t.column_id) name_list,
-            listagg(t.data_type, ',')
-            within group (order by t.column_id) type_list
-        from
-            sys.all_tab_columns t,
-            (
-                select owner, table_name
-                from sys.all_tab_columns
-                group by owner, table_name
-                having count(*) < 20
-            ) short
-        where
-            t.owner = short.owner
-            and t.table_name = short.table_name
-            and t.owner = 'BILLS'
-        group by t.owner, t.table_name
-    )
-    select *
-    from cols
-    where name_list = 'BILL_PERIOD,BILL_SYSTEM,BILL_USER'
+    .. code-block:: sql
+
+        with cols as (
+            select
+                t.owner,
+                t.table_name,
+                count(*) column_count,
+                listagg(t.column_name, ',')
+                within group (order by t.column_id) name_list,
+                listagg(t.data_type, ',')
+                within group (order by t.column_id) type_list
+            from
+                sys.all_tab_columns t,
+                (
+                    select owner, table_name
+                    from sys.all_tab_columns
+                    group by owner, table_name
+                    having count(*) < 20
+                ) short
+            where
+                t.owner = short.owner
+                and t.table_name = short.table_name
+                and t.owner = 'BILLS'
+            group by t.owner, t.table_name
+        )
+        select *
+        from cols
+        where name_list = 'BILL_PERIOD,BILL_SYSTEM,BILL_USER';
 
     The probable typename can be deduced, like:
     t.owner '.' || t.table_name || '%ROWTYPE'
 
-    The solution is too dynamic and error-prone, so it's better to define
-    the typename by hand, using dbsg config.
-
     Another dynamic solution might be:
-    select *
-    from sys.all_source
-    where
-        owner = 'INAC'
-        and name = 'COMMON_TARIFF_WORKSHEET_PKG'
-        and type = 'PACKAGE BODY'
-        and text like '%get_city%return%';
+
+    .. code-block:: sql
+
+        select
+            *
+        from
+            sys.all_source
+        where
+            owner = 'BILLS'
+            and name = 'SOME_PKG'
+            and type = 'PACKAGE BODY'
+            and text like '%proc_name%return%';
+
+    The solutions is too dynamic and error-prone, so it's better to define
+    the typename by hand, using dbsg config.
 
 """
 from dataclasses import dataclass, field

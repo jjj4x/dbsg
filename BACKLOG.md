@@ -19,7 +19,7 @@
 - [x] Style Guide Linter with flake8
 - [x] Satic Analysis with pylint
 - [x] Type Analysis with mypy
-- [ ] Documentation with sphinx
+- [x] Documentation with sphinx
 - [ ] tests
 - [ ] CI
 - [ ] PyPI publishing
