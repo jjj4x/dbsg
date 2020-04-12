@@ -185,6 +185,7 @@ INTROSPECTION_ORDER_CLAUSE = (
     'order by package, object_id, subprogram_id, sequence, position'
 )
 
+
 # *****************************INTROSPECTION TYPES*****************************
 @dataclass
 class IntrospectionRow:

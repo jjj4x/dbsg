@@ -120,6 +120,7 @@ class Schema:
         no_pkg = self.no_package_name or f'{self.name}_no_pkg'
         self.no_package_name = no_pkg.upper()
 
+        # FIXME
         # The original data will be in conformance with type annotations after
         # __post_init__
         exclude_packages = []
@@ -228,7 +229,8 @@ class Pool:
 
     user: str
     password: str
-    dsn: Union[DSN, object]  # cx_Oracle.dsn
+    _dsn: DSN
+    dsn: Optional[object]  # cx_Oracle.dsn
     threaded: bool = field(default=True)
     homogeneous: bool = field(default=True)
     min: int = field(default=8)
@@ -238,10 +240,10 @@ class Pool:
     def __post_init__(self):
         """Make an actual cx_Oracle.dsn type."""
         self.dsn = makedsn(
-            host=self.dsn.host,
-            port=self.dsn.port,
-            sid=self.dsn.sid,
-            service_name=self.dsn.service_name,
+            host=self._dsn.host,
+            port=self._dsn.port,
+            sid=self._dsn.sid,
+            service_name=self._dsn.service_name,
         )
 
 
@@ -337,7 +339,8 @@ class PoolSchema(MarshmallowSchema):
 
     @post_load
     def _post_load(self, data):
-        data['dsn'] = DSN(**data['dsn'])
+        data['_dsn'] = DSN(**data['dsn'])
+        data['dsn'] = None
         return data
 
 
@@ -407,11 +410,12 @@ class ConfigSchema(MarshmallowSchema):
 
     logging = fields.Dict(required=True)
 
-    @post_load
-    def _post_load(self, data):
+    @classmethod
+    def load_abbreviations(cls, filenames):
+        """Load abbreviations helper."""
         outcomes = {}
         words = []
-        for file in data.pop('abbreviation_files', []):
+        for file in filenames:
             with open(file, 'r', encoding='utf8') as fd:
                 for word in fd:
                     if not word or word.startswith('#'):
@@ -429,7 +433,14 @@ class ConfigSchema(MarshmallowSchema):
                     if outcome is not None:
                         outcomes[word] = outcome.strip()
 
-        data['abbreviations'] = re_compile(rf'(\b|_)({"|".join(words)})(\b|_)')
+        return re_compile(rf'(\b|_)({"|".join(words)})(\b|_)'), outcomes
+
+    @post_load
+    def _post_load(self, data):
+        abbreviations, outcomes = self.load_abbreviations(
+            data.pop('abbreviation_files', []),
+        )
+        data['abbreviations'] = abbreviations
         data['outcomes'] = outcomes
         data['databases'] = [Database(**db) for db in data['databases']]
         data['path'] = Path(data['path'])

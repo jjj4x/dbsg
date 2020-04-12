@@ -155,3 +155,4 @@ src/urls/dev.py
 local_notes*
 *abbreviations*
 !default_abbreviations.txt
+*fixture*

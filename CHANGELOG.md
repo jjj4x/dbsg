@@ -1,3 +1,9 @@
+# 2020.4.0
+## Made Some Tests
+- Another command in setup_tox.ini
+- pytest
+- Some tests
+
 # 2019.10.0
 ## Started Documentation and Readme
 - Another command in setup_tox.ini

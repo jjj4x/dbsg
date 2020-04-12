@@ -27,7 +27,7 @@ html
 http
 sql
 xml
-auto_pp  = AutoPP  # promised payment
+auto_pp = AutoPP  # promised payment
 fttb  # fiber to the building
 iptv
 ott  # over the top

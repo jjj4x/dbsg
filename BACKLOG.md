@@ -20,6 +20,6 @@
 - [x] Satic Analysis with pylint
 - [x] Type Analysis with mypy
 - [x] Documentation with sphinx
-- [ ] tests
+- [x] tests
 - [ ] CI
 - [ ] PyPI publishing
